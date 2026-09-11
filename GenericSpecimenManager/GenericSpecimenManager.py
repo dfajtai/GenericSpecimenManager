@@ -30,7 +30,7 @@ class GenericSpecimenManager(ScriptedLoadableModule):
     def __init__(self, parent):
         """Register this module with Slicer: sets title/category/contributors and, if present, a custom icon from Resources/Icons/<ModuleName>.png."""
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "Generic Specimen Viewer"
+        self.parent.title = "Generic Specimen Manager"
         self.parent.categories = ["Segmentation"]
         self.parent.dependencies = []
         self.parent.contributors = ["Daniel Fajtai"]

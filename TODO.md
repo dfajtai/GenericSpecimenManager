@@ -1,0 +1,3 @@
+- [ ] Volume rendering preset offset (https://gist.github.com/cpinter/8a1f71c7eb3ef0ebcaa6c1be6e1c9d4a#file-setpresetoffest-py)
+- [ ] Examples implementálása
+- [ ] config-ok implementálása (example "modulokhoz")
