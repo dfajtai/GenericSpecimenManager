@@ -1,0 +1,61 @@
+{
+  "_comment": "Config Editor's built-in example-presets catalogue (Show example presets... / Insert ALL). Each entry: 'description' (shown in the popup) + 'preset' (the actual presets[<name>] value, inserted verbatim into the Presets JSON field). Edit/add entries here - no Python change needed.",
+
+  "ct_soft_tissue": {
+    "description": "Typical CT soft-tissue window (abdomen/pelvis general use).",
+    "preset": { "window_level": { "min": -150, "max": 700 }, "color_table": "Grey" }
+  },
+  "ct_bone": {
+    "description": "Wide CT window for bone detail.",
+    "preset": { "window_level": { "min": -200, "max": 1500 }, "color_table": "Grey" }
+  },
+  "ct_lung": {
+    "description": "Very wide, low-center CT window for lung parenchyma.",
+    "preset": { "window_level": { "min": -1400, "max": 200 }, "color_table": "Grey" }
+  },
+  "ct_brain": {
+    "description": "Narrow CT window for brain parenchyma.",
+    "preset": { "window_level": { "min": 0, "max": 80 }, "color_table": "Grey" }
+  },
+  "ct_abdomen": {
+    "description": "Slightly narrower alternative abdomen window.",
+    "preset": { "window_level": { "min": -135, "max": 215 }, "color_table": "Grey" }
+  },
+  "ct_angio": {
+    "description": "CT window tuned for contrast-enhanced vessels.",
+    "preset": { "window_level": { "min": 100, "max": 700 }, "color_table": "Grey" }
+  },
+  "mri_auto": {
+    "description": "Let Slicer auto-window any MRI sequence; also smooths (interpolate).",
+    "preset": { "window_level": { "auto": true }, "interpolate": true }
+  },
+  "mri_t1": {
+    "description": "Auto window + interpolation + grayscale, for T1-weighted MRI.",
+    "preset": { "window_level": { "auto": true }, "interpolate": true, "color_table": "Grey" }
+  },
+  "mri_t2_flair": {
+    "description": "Auto window + interpolation + grayscale, for T2/FLAIR MRI.",
+    "preset": { "window_level": { "auto": true }, "interpolate": true, "color_table": "Grey" }
+  },
+  "pet_hot_metal": {
+    "description": "Hot-metal PET colormap at partial opacity, meant as an overlay.",
+    "preset": { "window_level": { "auto": true }, "color_table": "PET-Heat", "opacity": 0.6 }
+  },
+  "label_overlay": {
+    "description": "Generic distinguishable colors for a label/segmentation-style overlay.",
+    "preset": { "color_table": "GenericColors" }
+  },
+  "red_overlay": {
+    "description": "Deer-study 'rel' example: red colormap + threshold + a narrow width/level window, semi-transparent.",
+    "preset": {
+      "color_table": "vtkMRMLColorTableNodeRed",
+      "threshold": { "min": 1, "max": 300 },
+      "window_level": { "window": 1, "level": 2 },
+      "opacity": 0.45
+    }
+  },
+  "green_overlay": {
+    "description": "Simple green, half-opacity overlay - handy for a second label image.",
+    "preset": { "color_table": "vtkMRMLColorTableNodeGreen", "opacity": 0.5 }
+  }
+}

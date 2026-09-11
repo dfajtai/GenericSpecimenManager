@@ -1,0 +1,40 @@
+{
+  "study_dir": "/nas/medicopus_share/Projects/ANIMALS/HARIBO/segmentation_2/segmentation",
+  "database_csv_path": "/nas/medicopus_share/Projects/ANIMALS/HARIBO/segmentation_2/etc/database.csv",
+  "preseg_csv_path": "/nas/medicopus_share/Projects/ANIMALS/HARIBO/segmentation_2/etc/img_paths.csv",
+
+  "key_columns": ["ID", "measurement"],
+  "table_columns": ["ID", "measurement", "done"],
+  "output_dir_pattern": ["ID", "measurement"],
+
+  "defaults": {
+    "image": { "path_pattern": "{ID}/{measurement}/{ID}-{name}.nii.gz", "required": true }
+  },
+
+  "images": [
+    { "name": "background", "csv_column": "background", "role": "background" },
+    { "name": "mask", "csv_column": "mask", "role": "label" }
+  ],
+
+  "segmentation": {
+    "enabled": true,
+    "reference_image": "mask",
+    "path_pattern": "{ID}/{measurement}/{ID}-{segment_name}.nii.gz",
+    "segments": [
+      { "name": "chunk" },
+      { "name": "body" },
+      { "name": "belly" },
+      { "name": "venteral belly" },
+      { "name": "shoulder" },
+      { "name": "ham" },
+      { "name": "loin" }
+    ],
+    "output_filename": "segment.seg.nrrd"
+  },
+
+  "batch_export": {
+    "enabled": true,
+    "export_segments": true,
+    "reference_image": "mask"
+  }
+}

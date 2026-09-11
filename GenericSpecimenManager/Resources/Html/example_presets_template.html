@@ -1,0 +1,18 @@
+<!--
+  Config Editor - Example Presets popup template.
+  Loaded by ConfigEditorDialog._build_example_presets_html(), which replaces
+  {{CONTENT}} with one <h3>/<p>/<pre> block per entry in EXAMPLE_PRESETS
+  (generated at runtime, since it depends on that Python dict - only the
+  static wrapper/style lives here).
+-->
+<style>
+  body { font-family: sans-serif; font-size: 13px; }
+  h3 { font-size: 13px; margin: 14px 0 2px 0; color: #2c5f8a; }
+  h3:first-child { margin-top: 0; }
+  p.desc { margin: 0 0 4px 0; color: #555; }
+  pre { background-color: #f4f6f8; border: 1px solid #ddd; border-radius: 4px;
+        padding: 6px 8px; margin: 0 0 4px 0; font-family: monospace; font-size: 12px; }
+</style>
+<p>Each block is a complete <code>presets</code> entry - select one (click inside, Ctrl+A, Ctrl+C) and
+paste it into the presets JSON field, merging with whatever's already there.</p>
+{{CONTENT}}

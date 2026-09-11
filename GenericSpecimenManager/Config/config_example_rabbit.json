@@ -1,0 +1,34 @@
+{
+  "study_dir": "/nas/medicopus_share/Projects/ANIMALS/RABBIT_CT_BONE/manual_work/20180109",
+  "database_csv_path": "etc/database.csv",
+  "preseg_csv_path": "etc/img_paths.csv",
+
+  "key_columns": ["batch", "ID", "position"],
+  "table_columns": ["batch", "ID", "position", "RC_Right", "RC_Left", "HasAtypical1", "V_Total", "HasAtypical2", "V_After", "Comment", "done"],
+  "output_dir_pattern": ["batch"],
+
+  "images": [
+    { "name": "background", "csv_column": "img_path", "role": "background", "required": true },
+    { "name": "mask", "csv_column": "mask_path", "type": "labelmap", "role": "label", "required": true }
+  ],
+
+  "landmarks": {
+    "enabled": true,
+    "csv_column": "markups_path",
+    "color": [1, 1, 0]
+  },
+
+  "volume_rendering": {
+    "enabled": true,
+    "source_image": "background",
+    "preset": "CT-Chest-Contrast-Enhanced"
+  },
+
+  "window_level": { "enabled": true, "min": -150, "max": 700 },
+
+  "batch_export": {
+    "enabled": true,
+    "export_markups": true,
+    "output_dir": "results"
+  }
+}

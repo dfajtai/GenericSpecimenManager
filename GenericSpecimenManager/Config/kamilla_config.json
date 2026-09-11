@@ -1,0 +1,166 @@
+{
+  "study_dir": "/nas/medicopus_share/Projects/kamilla_maj/slicer_data_source",
+  "database_csv_path": "etc/database.csv",
+  "preseg_csv_path": "etc/img_paths.csv",
+  "key_columns": [
+    "software",
+    "accession"
+  ],
+  "done_column": "done",
+  "table_columns": [
+    "accession",
+    "software",
+    "Comment",
+    "done"
+  ],
+  "output_dir_pattern": [
+    "software",
+    "accession"
+  ],
+  "batch_mode": {
+    "enabled": true,
+    "column": "software"
+  },
+  "images": [
+    {
+      "name": "native",
+      "csv_column": "nat",
+      "type": "volume",
+      "role": "background",
+      "required": true
+    },
+    {
+      "name": "water",
+      "csv_column": "water",
+      "type": "volume"
+    },
+    {
+      "name": "arterial",
+      "csv_column": "art",
+      "type": "volume",
+      "required": true
+    },
+    {
+      "name": "portal",
+      "csv_column": "port",
+      "type": "volume",
+      "required": true
+    },
+    {
+      "name": "equlibrium",
+      "csv_column": "eq",
+      "type": "volume",
+      "required": true
+    },
+    {
+      "name": "last_image",
+      "csv_column": "late",
+      "type": "volume",
+      "required": true
+    }
+  ],
+  "segmentation": {
+    "enabled": true,
+    "reference_image": "native",
+    "output_filename": "segment.seg.nrrd",
+    "segments": [
+      {
+        "name": "liver",
+        "source": "empty",
+        "color": [
+          0.8,
+          0.35,
+          0.35
+        ]
+      },
+      {
+        "name": "gallbladder",
+        "source": "empty",
+        "color": [
+          0.2,
+          0.7,
+          0.3
+        ]
+      },
+      {
+        "name": "lesion",
+        "source": "empty",
+        "color": [
+          0.95,
+          0.85,
+          0.2
+        ]
+      },
+      {
+        "name": "portal_vena",
+        "source": "empty",
+        "color": [
+          0.2,
+          0.5,
+          0.85
+        ]
+      },
+      {
+        "name": "aorte",
+        "source": "empty",
+        "color": [
+          0.9,
+          0.15,
+          0.15
+        ]
+      },
+      {
+        "name": "background",
+        "source": "empty",
+        "color": [
+          1.0,
+          0.412,
+          0.706
+        ]
+      }
+    ]
+  },
+  "volume_rendering": [
+    {
+      "image": "native",
+      "enabled": true,
+      "preset": "MR-Default",
+      "window_level": {
+        "min": 50.0,
+        "max": 300.0
+      }
+    }
+  ],
+  "batch_export": {
+    "enabled": true,
+    "export_segments": true,
+    "export_markups": false,
+    "per_batch_subfolder": false,
+    "reference_image": "native"
+  },
+  "segment_editor": {
+    "overwrite_mode": "none",
+    "brush": {
+      "shape": "sphere",
+      "diameter_mm": 20.0,
+      "relative": false
+    },
+    "active_effect": "Paint"
+  },
+  "presets": {
+    "ct_soft_tissue": {
+      "window_level": {
+        "min": -150,
+        "max": 700
+      },
+      "color_table": "Grey"
+    },
+    "ct_bone": {
+      "window_level": {
+        "min": -200,
+        "max": 1500
+      },
+      "color_table": "Grey"
+    }
+  }
+}

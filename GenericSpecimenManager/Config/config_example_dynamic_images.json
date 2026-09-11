@@ -1,0 +1,23 @@
+{
+  "study_dir": "/path/to/study",
+  "database_csv_path": "etc/database.csv",
+  "preseg_csv_path": "etc/img_paths.csv",
+
+  "key_columns": ["sid"],
+  "table_columns": ["sid", "done"],
+
+  "defaults": {
+    "image": { "window_level": { "auto": true } }
+  },
+
+  "presets": {
+    "diffusion": { "color_table": "Rainbow" }
+  },
+
+  "images": [
+    { "pattern": "^seq_.*$", "strip_prefix": "seq_" },
+    { "name": "dwi", "csv_column": "dwi_path", "preset": "diffusion" },
+    { "name": "adc", "csv_column": "adc_path", "preset": "diffusion" },
+    { "name": "mask", "csv_column": "mask", "type": "labelmap", "role": "label" }
+  ]
+}

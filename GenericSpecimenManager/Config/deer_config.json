@@ -1,0 +1,45 @@
+{
+  "study_dir": "/data/deer/nas_deer",
+  "database_csv_path": "etc/deer_database.csv",
+  "preseg_csv_path": "etc/preseg_paths.csv",
+
+  "key_columns": ["sid"],
+  "table_columns": ["sid", "group", "done"],
+  "output_dir_pattern": ["sid", "slicer_seg"],
+
+  "presets": {
+    "red_overlay": {
+      "color_table": "vtkMRMLColorTableNodeRed",
+      "threshold": { "min": 1, "max": 300 },
+      "window_level": { "window": 1, "level": 2 },
+      "opacity": 0.45
+    }
+  },
+
+  "images": [
+    { "name": "t1", "csv_column": "t1", "role": "background", "required": true },
+    { "name": "t2", "csv_column": "t2", "required": true },
+    { "name": "rel", "csv_column": "rel", "role": "foreground", "required": true, "preset": "red_overlay" }
+  ],
+
+  "segmentation": {
+    "enabled": true,
+    "reference_image": "t1",
+    "segments": [
+      { "name": "t1_mask", "csv_column": "t1_mask", "color": [0, 0.2, 0.8] },
+      { "name": "t2_mask", "csv_column": "t2_mask", "color": [0.8, 0.1, 0.8] },
+      { "name": "mask",      "source": "empty", "color": [1, 1, 1] },
+      { "name": "non-liver", "source": "empty", "color": [0, 0.8, 0.3] },
+      { "name": "worm",      "source": "empty", "color": [1, 1, 0] }
+    ],
+    "output_filename": "segment.seg.nrrd",
+    "opacity": 0.8
+  },
+
+  "batch_export": {
+    "enabled": true,
+    "export_segments": true,
+    "reference_image": "t1",
+    "segments_filter": ["mask", "non-liver", "worm"]
+  }
+}
