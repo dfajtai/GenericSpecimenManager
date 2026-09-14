@@ -483,7 +483,7 @@ class GenericSpecimen:
                 if preset:
                     displayNode.GetVolumePropertyNode().Copy(preset)
 
-            self._apply_volume_rendering_shift(displayNode, vr_entry.window_level, vr_entry.image)
+            self._apply_volume_rendering_shift(displayNode, vr_entry)
 
             self.volume_rendering_nodes.append(displayNode)
             roiNode = displayNode.GetROINode()
@@ -513,28 +513,24 @@ class GenericSpecimen:
             selectionNode.SetReferenceActivePlaceNodeID(self.markups_node.GetID())
             slicer.modules.markups.logic().SetActiveListID(self.markups_node)
 
-    def _apply_volume_rendering_shift(self, displayNode, window_level, image_name):
-        """Shift a (usually preset-derived) volume rendering transfer function
-        into a given scalar range - either an explicit min/max, or a
-        window/level (width/center) pair converted to min/max, same two forms
-        as ImageConfig.window_level. No-op if window_level is unset.
+    def _apply_volume_rendering_shift(self, displayNode, vr_entry):
+        """Shift a (usually preset-derived) volume rendering transfer function.
+        Two independent mechanisms, checked in this order:
 
-        NOTE: implemented via _remap_transfer_function() below (control-point
-        remapping, not a mythical AdjustRange() method - see its docstring).
-        Wrapped defensively: if anything about this differs on your Slicer/
-        VTK version, it prints a message and leaves the plain preset in
-        place rather than failing the whole load.
+        1. `offset` - a fixed shift (every control point moves by the same
+           amount, spacing/shape untouched) - the classic "Shift" slider
+           behavior, matching the community 'shiftVolumeRendering' script
+           referenced in TODO.md. Wins if both offset and window_level are set.
+        2. `window_level` - a full rescale into an explicit [min, max] range
+           (or a window/level pair converted to one), via
+           _remap_transfer_function() - control-point remapping, NOT a
+           mythical AdjustRange() method (see that method's docstring).
+
+        No-op if neither is set. Wrapped defensively: if anything about this
+        differs on your Slicer/VTK version, it prints a message and leaves
+        the plain preset in place rather than failing the whole load.
         """
-        if window_level is None:
-            return
-        if window_level.min is not None and window_level.max is not None:
-            new_range = [window_level.min, window_level.max]
-        elif window_level.window is not None and window_level.level is not None:
-            half = window_level.window / 2.0
-            new_range = [window_level.level - half, window_level.level + half]
-        else:
-            return
-
+        image_name = vr_entry.image
         try:
             volPropNode = displayNode.GetVolumePropertyNode()
             try:
@@ -544,10 +540,60 @@ class GenericSpecimen:
                 vp = volPropNode.GetVolumeProperty()
                 opacity = vp.GetScalarOpacity()
                 color = vp.GetRGBTransferFunction()
+        except Exception as e:
+            print(f"[GenericSpecimen] could not access volume rendering transfer functions for '{image_name}': {e}")
+            return
+
+        if vr_entry.offset:
+            try:
+                self._offset_transfer_function(opacity, vr_entry.offset)
+                self._offset_transfer_function(color, vr_entry.offset)
+            except Exception as e:
+                print(f"[GenericSpecimen] could not offset volume rendering range for '{image_name}': {e}")
+            return
+
+        window_level = vr_entry.window_level
+        if window_level is None:
+            return
+        if window_level.min is not None and window_level.max is not None:
+            new_range = [window_level.min, window_level.max]
+        elif window_level.window is not None and window_level.level is not None:
+            half = window_level.window / 2.0
+            new_range = [window_level.level - half, window_level.level + half]
+        else:
+            return
+        try:
             self._remap_transfer_function(opacity, new_range[0], new_range[1])
             self._remap_transfer_function(color, new_range[0], new_range[1])
         except Exception as e:
             print(f"[GenericSpecimen] could not shift volume rendering range for '{image_name}': {e}")
+
+    def _offset_transfer_function(self, func, offset):
+        """Shift every control point's x value by a fixed amount, leaving
+        spacing/shape/y-values untouched - the exact GetNodeValue() ->
+        modify x -> RemoveAllPoints()+AddPoint()/AddRGBPoint() technique
+        from the community 'shiftVolumeRendering' script (see
+        _remap_transfer_function() below for the full-rescale variant and
+        why AdjustRange() is not a real method to reach for here)."""
+        n = func.GetSize()
+        if n == 0 or not offset:
+            return
+        is_color = hasattr(func, "AddRGBPoint")
+        width = 6 if is_color else 4
+        points = []
+        for i in range(n):
+            val = [0.0] * width
+            func.GetNodeValue(i, val)
+            points.append(val)
+        for val in points:
+            val[0] += offset
+        func.RemoveAllPoints()
+        for val in points:
+            if is_color:
+                func.AddRGBPoint(*val)
+            else:
+                func.AddPoint(*val)
+        func.Modified()
 
     def _remap_transfer_function(self, func, new_min, new_max):
         """Linearly remap an existing vtkPiecewiseFunction (opacity) or
@@ -985,6 +1031,13 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
             self.ui.btnSelectConfig.visible = False
             self.ui.tbConfigPath.visible = False
 
+        # ScriptedLoadableModuleWidget.setup() above only builds this when
+        # Slicer's global Edit > Application Settings > Developer > "Enable
+        # developer mode" is on - hide it either way, since Reload/Test/Edit
+        # source buttons aren't meant for this module's end users.
+        if hasattr(self, "reloadCollapsibleButton"):
+            self.reloadCollapsibleButton.hide()
+
         self.initializeParameterNode()
 
     def cleanup(self):
@@ -994,10 +1047,19 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
     def enter(self):
         """Standard hook: Slicer calls this every time the user switches into this module."""
         self.initializeParameterNode()
+        self._setHelpSectionVisible(False)
 
     def exit(self):
         """Standard hook: Slicer calls this every time the user switches away from this module."""
         self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
+        self._setHelpSectionVisible(True)
+
+    def _setHelpSectionVisible(self, visible):
+        """Show/hide the module panel's Help & Acknowledgement section via slicer.util.setModuleHelpSectionVisible() - a module-panel-wide (not per-module) setting, hence toggled in enter()/exit() rather than once in setup(). Defensively wrapped: an older Slicer build without this helper just leaves the section as-is instead of raising."""
+        try:
+            slicer.util.setModuleHelpSectionVisible(visible)
+        except Exception as e:
+            print(f"[GenericSpecimenManager] could not toggle the Help section (older Slicer build?): {e}")
 
     def onSceneStartClose(self, caller, event):
         """Close the active specimen (without confirmation - the scene is going away regardless) before the MRML scene is actually torn down."""

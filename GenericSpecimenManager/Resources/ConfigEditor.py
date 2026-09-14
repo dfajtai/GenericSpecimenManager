@@ -208,7 +208,7 @@ class ConfigEditorDialog(qt.QDialog):
         """Build the whole dialog and, if initial_path is given, load that config immediately (skipping the discard-changes prompt, since there's nothing to discard yet)."""
         qt.QDialog.__init__(self, parent)
         self.setWindowTitle("Config Editor")
-        self.resize(1120, 720)
+        self.resize(1180, 720)
 
         self._current_path = None
         self._preseg_abs_path = ""    # true absolute preseg path, tracked separately from its (possibly relative) display text
@@ -934,15 +934,23 @@ class ConfigEditorDialog(qt.QDialog):
         hint = qt.QLabel(
             "One row per image from the Images tab. Check Enable to volume-render that image; "
             "any number can be enabled at once. Preset is a built-in Slicer VR preset name (editable - "
-            "type your own if it's not in the list). Min/Max optionally shift the preset's transfer "
-            "function into that scalar range - leave both empty to use the preset as-is.")
+            "type your own if it's not in the list). Min/Max optionally rescale the preset's transfer "
+            "function into that scalar range. Offset shifts it by a fixed amount instead, keeping its "
+            "shape/spacing (like the 'Shift' slider) - if both Offset and Min/Max are set, Offset wins. "
+            "Leave all three empty to use the preset as-is.")
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
-        self.vrTable = qt.QTableWidget(0, 5)
-        vr_headers = ["Image", "Enable", "Preset", "Min", "Max"]
+        self.vrTable = qt.QTableWidget(0, 6)
+        vr_headers = ["Image", "Enable", "Preset", "Min", "Max", "Offset"]
         self.vrTable.setHorizontalHeaderLabels(vr_headers)
-        self.vrTable.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
+        vr_header = self.vrTable.horizontalHeader()
+        vr_header.setSectionResizeMode(0, qt.QHeaderView.Stretch)             # Image - names can be long
+        vr_header.setSectionResizeMode(1, qt.QHeaderView.ResizeToContents)    # Enable - just a checkbox
+        vr_header.setSectionResizeMode(2, qt.QHeaderView.Stretch)             # Preset - VR preset names are long (e.g. CT-Chest-Contrast-Enhanced)
+        vr_header.setSectionResizeMode(3, qt.QHeaderView.ResizeToContents)    # Min - short numbers
+        vr_header.setSectionResizeMode(4, qt.QHeaderView.ResizeToContents)    # Max - short numbers
+        vr_header.setSectionResizeMode(5, qt.QHeaderView.ResizeToContents)    # Offset - short numbers
         layout.addWidget(self.vrTable)
 
         refreshBtn = qt.QPushButton("Refresh image list from Images tab")
@@ -965,6 +973,7 @@ class ConfigEditorDialog(qt.QDialog):
                 "preset": presetCombo.currentText if presetCombo else "",
                 "min": self.vrTable.item(row, 3).text(),
                 "max": self.vrTable.item(row, 4).text(),
+                "offset": self.vrTable.item(row, 5).text(),
             }
 
         image_names = []
@@ -1000,6 +1009,7 @@ class ConfigEditorDialog(qt.QDialog):
 
             self.vrTable.setItem(row, 3, qt.QTableWidgetItem(prev.get("min", "")))
             self.vrTable.setItem(row, 4, qt.QTableWidgetItem(prev.get("max", "")))
+            self.vrTable.setItem(row, 5, qt.QTableWidgetItem(prev.get("offset", "")))
 
         self._mark_dirty()
 
@@ -1015,11 +1025,14 @@ class ConfigEditorDialog(qt.QDialog):
             preset = (presetCombo.currentText or "").strip() if presetCombo else ""
             mn = _f(self.vrTable.item(row, 3).text())
             mx = _f(self.vrTable.item(row, 4).text())
-            if not enabled and not preset and mn is None and mx is None:
+            offset = _f(self.vrTable.item(row, 5).text())
+            if not enabled and not preset and mn is None and mx is None and offset is None:
                 continue  # untouched row, nothing worth writing
             entry = {"image": name, "enabled": enabled}
             if preset:
                 entry["preset"] = preset
+            if offset is not None:
+                entry["offset"] = offset
             if mn is not None or mx is not None:
                 entry["window_level"] = {k: v for k, v in (("min", mn), ("max", mx)) if v is not None}
             entries.append(entry)
@@ -1490,6 +1503,7 @@ class ConfigEditorDialog(qt.QDialog):
             wl = entry.get("window_level") or {}
             self.vrTable.item(row, 3).setText("" if wl.get("min") is None else str(wl["min"]))
             self.vrTable.item(row, 4).setText("" if wl.get("max") is None else str(wl["max"]))
+            self.vrTable.item(row, 5).setText("" if entry.get("offset") is None else str(entry["offset"]))
 
         wl = cfg.get("window_level", {}) or {}
         self.chkWlEnabled.checked = bool(wl.get("enabled"))

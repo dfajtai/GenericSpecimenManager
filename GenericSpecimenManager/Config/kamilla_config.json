@@ -122,13 +122,10 @@
   },
   "volume_rendering": [
     {
-      "image": "native",
+      "image": "equlibrium",
       "enabled": true,
       "preset": "MR-Default",
-      "window_level": {
-        "min": 50.0,
-        "max": 300.0
-      }
+      "offset": 300.0
     }
   ],
   "batch_export": {

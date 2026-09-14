@@ -222,12 +222,17 @@ class LandmarksConfig:
 @dataclass
 class VolumeRenderingEntry:
     """One entry in the volume_rendering LIST - one image, independently
-    enable-able, with its own preset and optional range shift (min/max or
-    window/level, same forms as ImageConfig.window_level)."""
+    enable-able, with its own preset and an optional shift: either a fixed
+    'offset' (moves every control point by the same amount, preserving
+    spacing - the classic "Shift" slider behavior), or window_level
+    (min/max or window/level, same forms as ImageConfig.window_level - a
+    full rescale into a target range). If both are set, offset wins (see
+    GenericSpecimen._apply_volume_rendering_shift)."""
     image: Optional[str] = None
     enabled: Optional[bool] = None
     preset: Optional[str] = None
     window_level: Optional[WindowLevel] = None
+    offset: Optional[float] = None
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):

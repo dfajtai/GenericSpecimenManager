@@ -65,9 +65,12 @@
 <ul>
 <li>One row per Images-tab image. <b>Any number</b> can have <b>Enable</b> checked at once - each gets its own independent 3D volume rendering.</li>
 <li><b>Preset</b> - a built-in Slicer VR preset name (editable combo - type your own if it's not in the list).</li>
-<li><b>Min/Max</b> - optional. Shifts the preset's opacity/color transfer function into that scalar range, e.g. narrowing a CT preset to a specific Hounsfield window for this specimen's data. Leave both empty to use the preset exactly as shipped.</li>
+<li><b>Min/Max</b> - optional. Rescales the preset's opacity/color transfer function into that scalar range, e.g. narrowing a CT preset to a specific Hounsfield window for this specimen's data.</li>
+<li><b>Offset</b> - optional. Shifts the transfer function by a fixed amount, keeping its shape/spacing (classic "Shift" behavior). Wins over Min/Max if both are set.</li>
+<li>Leave Min/Max/Offset all empty to use the preset exactly as shipped.</li>
 <li><b>Refresh image list</b> - re-syncs rows with the Images tab (new/renamed/removed images), keeping existing settings for images that still exist by name.</li>
 </ul>
+<p class="note">Note: the render itself is correct, but Slicer's own Volume Rendering module's "Shift" slider won't reflect the offset - cosmetic only.</p>
 
 <h2>&#128190; Batch export</h2>
 <ul>

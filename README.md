@@ -5,39 +5,51 @@ A single, JSON-configured Slicer module. No per-species Python module - one
 landmarks, batch export, how the Segment Editor should behave, ...), and the
 module loads and executes it.
 
+This README lives at the **repo root**, one level above the actual Slicer
+module (a common CMake-extension layout: the outer folder is the repo/
+extension, the inner one is the module CMake registers by name).
+
 ```
-GenericSpecimenManager/GenericSpecimenManager/GenericSpecimenManager/   <- this folder
-├── GenericSpecimenManager.py        <- the Slicer module (title/icon, Widget/Logic wiring)
-├── Config/                          <- study configs (pig_config.json, rabbit_config.json, deer_config.json, ...)
-├── Examples/                        <- reference/documentation-only, NOT registered wrapper examples
-│   ├── DeerSegmentor.py / PigChunker.py / RabbitVertCount.py
-│   └── README.md
-├── Resources/
-│   ├── ConfigModel.py               <- dataclasses: StudyConfig and the rest of the schema
-│   ├── GenericSpecimenEngine.py     <- the actual logic (Logic, GenericSpecimen, Widget base, batch export)
-│   ├── ConfigEditor.py              <- the dialog behind the "Config Editor..." button
-│   ├── Presets/example_presets.json <- Config Editor's preset catalogue - extensible without code
-│   ├── Html/                        <- Config Editor Help / example-presets HTML content - extensible without code
-│   │   ├── help_cheatsheet.html
-│   │   └── example_presets_template.html
-│   ├── Icons/GenericSpecimenManager.png
-│   └── UI/GenericSpecimenManager.ui
-└── Testing/
+GenericSpecimenManager/                          <- repo root (this README, top CMakeLists.txt, LICENSE, TODO.md)
+├── CMakeLists.txt                                <- extension-level CMake (adds the module subdirectory)
+├── LICENSE
+├── TODO.md
+└── GenericSpecimenManager/                       <- the actual Slicer module
+    ├── CMakeLists.txt                            <- module-level CMake (scripted module boilerplate)
+    ├── GenericSpecimenManager.py                 <- the Slicer module (title/icon, Widget/Logic wiring)
+    ├── Config/                                   <- study configs, e.g. pig_config.json, rabbit_config.json,
+    │                                                 deer_config.json, kamilla_config.json, plus a few
+    │                                                 config_example_*.json used as minimal, annotated starting points
+    ├── Examples/                                 <- reference/documentation-only, NOT registered wrapper examples
+    │   ├── DeerSegmentor.py / PigChunker.py / RabbitVertCount.py
+    ├── Resources/
+    │   ├── ConfigModel.py                        <- dataclasses: StudyConfig and the rest of the schema
+    │   ├── GenericSpecimenEngine.py               <- the actual logic (Logic, GenericSpecimen, Widget base, batch export)
+    │   ├── ConfigEditor.py                       <- the dialog behind the "Config Editor..." button
+    │   ├── Presets/example_presets.json          <- Config Editor's preset catalogue - extensible without code
+    │   ├── Html/                                 <- Config Editor Help / example-presets HTML content - extensible without code
+    │   │   ├── help_cheatsheet.html
+    │   │   └── example_presets_template.html
+    │   ├── Icons/GenericSpecimenManager.png / .svg
+    │   └── UI/GenericSpecimenManager.ui
+    └── Testing/
+        ├── CMakeLists.txt
+        └── Python/CMakeLists.txt
 ```
 
-[`GenericSpecimenManager.py`](GenericSpecimenManager.py) puts `Resources` on
-`sys.path` and reaches the logic via
+[`GenericSpecimenManager/GenericSpecimenManager.py`](GenericSpecimenManager/GenericSpecimenManager.py)
+puts `Resources` on `sys.path` and reaches the logic via
 `from Resources.GenericSpecimenEngine import GenericSpecimenManagerWidgetBase`.
 Each file's responsibility:
 
 | file | responsibility |
 |---|---|
-| [`GenericSpecimenManager.py`](GenericSpecimenManager.py) | Slicer module registration (title, icon, `CONFIG_PATH`) - ~60 lines, no business logic |
-| [`Resources/ConfigModel.py`](Resources/ConfigModel.py) | the typed, attribute-accessed representation of `config.json` (dataclasses) |
-| [`Resources/GenericSpecimenEngine.py`](Resources/GenericSpecimenEngine.py) | `Logic`, `GenericSpecimen` (load/save/close one specimen), the Widget base class, batch export |
-| [`Resources/ConfigEditor.py`](Resources/ConfigEditor.py) | GUI for building/editing `config.json` without hand-writing JSON |
-| [`Resources/Presets/example_presets.json`](Resources/Presets/example_presets.json) | Config Editor's preset catalogue - **data, not code**, freely extensible |
-| [`Resources/Html/*.html`](Resources/Html) | Config Editor's Help + example-presets popup content - **data, not code**, freely extensible |
+| [`GenericSpecimenManager.py`](GenericSpecimenManager/GenericSpecimenManager.py) | Slicer module registration (title, icon, `CONFIG_PATH`) - ~60 lines, no business logic |
+| [`Resources/ConfigModel.py`](GenericSpecimenManager/Resources/ConfigModel.py) | the typed, attribute-accessed representation of `config.json` (dataclasses) |
+| [`Resources/GenericSpecimenEngine.py`](GenericSpecimenManager/Resources/GenericSpecimenEngine.py) | `Logic`, `GenericSpecimen` (load/save/close one specimen), the Widget base class, batch export |
+| [`Resources/ConfigEditor.py`](GenericSpecimenManager/Resources/ConfigEditor.py) | GUI for building/editing `config.json` without hand-writing JSON |
+| [`Resources/Presets/example_presets.json`](GenericSpecimenManager/Resources/Presets/example_presets.json) | Config Editor's preset catalogue - **data, not code**, freely extensible |
+| [`Resources/Html/*.html`](GenericSpecimenManager/Resources/Html) | Config Editor's Help + example-presets popup content - **data, not code**, freely extensible |
 
 All four Python files are **100% docstring-covered** (classes, methods,
 nested helper functions too) - VS Code's Outline panel / hover tooltips give
@@ -50,7 +62,7 @@ is done a certain way, not just *what* it does.
 
 Instead of `cfg["segmentation"].get("segments", [])`, you write
 `cfg.segmentation.segments`. Dataclasses in
-[`ConfigModel.py`](Resources/ConfigModel.py) fall into two groups:
+[`ConfigModel.py`](GenericSpecimenManager/Resources/ConfigModel.py) fall into two groups:
 
 - **Section dataclasses** (`StudyConfig`, `SegmentationConfig`,
   `LandmarksConfig`, `GlobalWindowLevelConfig`, `BatchExportConfig`,
@@ -188,20 +200,20 @@ getting stuck open (see below for why that mattered in practice).
 ### Content you can extend without touching code
 
 Two of the Config Editor's content sources are deliberately **externalized
-from [`ConfigEditor.py`](Resources/ConfigEditor.py)**, so they can be
+from [`ConfigEditor.py`](GenericSpecimenManager/Resources/ConfigEditor.py)**, so they can be
 extended later without any Python knowledge:
 
-- **[`Resources/Html/help_cheatsheet.html`](Resources/Html/help_cheatsheet.html)**
+- **[`Resources/Html/help_cheatsheet.html`](GenericSpecimenManager/Resources/Html/help_cheatsheet.html)**
   - the full content behind the "Help" button. Plain editable HTML/CSS (Qt's
   rich-text subset - don't expect full browser compatibility, but the usual
   `<h2>/<ul>/<li>/<table>/<pre>/<code>` all work). A new section is just a
   new `<h2>...</h2>` block - nothing to change in the `.py` file.
-- **[`Resources/Html/example_presets_template.html`](Resources/Html/example_presets_template.html)**
+- **[`Resources/Html/example_presets_template.html`](GenericSpecimenManager/Resources/Html/example_presets_template.html)**
   - the static frame/style for the "Show example presets..." popup, with a
   `{{CONTENT}}` placeholder that the code fills in at runtime (since that
   part is itself data-driven - see below). If you just want to tweak the
   popup's look (colors, font size, layout), this is the file.
-- **[`Resources/Presets/example_presets.json`](Resources/Presets/example_presets.json)**
+- **[`Resources/Presets/example_presets.json`](GenericSpecimenManager/Resources/Presets/example_presets.json)**
   - the actual preset catalogue data:
   `{"<name>": {"description": "...", "preset": {...ImageConfig fields...}}}`.
   Adding a preset = adding a JSON entry, **no code required**. This one file
@@ -326,6 +338,12 @@ Verified with a mocked test: control points originally spanning
 `[-450..1000]` correctly shift/rescale into a new `[-200..800]` range, with
 relative positions (fractions) and y/RGB values left unchanged.
 
+Each entry also supports a plain `offset` (a fixed shift, no rescale - the
+gist's original technique, via `_offset_transfer_function()`) as an
+alternative to `window_level`; if both are set, `offset` wins. Note: this
+shifts the actual render correctly, but Slicer's own Volume Rendering
+module's "Shift" slider won't reflect it - cosmetic only.
+
 ## Error handling in the main module
 
 **Live, continuous validation** (not just a popup on click): the
@@ -379,7 +397,7 @@ into `<out_dir>/<batch_value>/...` folders instead of one flat folder.
   API is uncertain, search for it, or at least flag explicitly in the
   code/docstring that it isn't 100% confirmed.
 - **Dataclass, not a `.get()` chain** - if a new top-level config section is
-  needed, always introduce it in [`ConfigModel.py`](Resources/ConfigModel.py)
+  needed, always introduce it in [`ConfigModel.py`](GenericSpecimenManager/Resources/ConfigModel.py)
   as a dataclass (with a `from_dict` classmethod); don't let a raw dict leak
   into the engine.
 - **Backward compatibility is not a goal** - the schema has changed shape
@@ -395,6 +413,6 @@ into `<out_dir>/<batch_value>/...` folders instead of one flat folder.
    key columns → Images tab quick-add → Save).
 2. In the GUI, `Select .json file` → "Initialize Study".
 3. Once it's final, optionally add a short, reference-style wrapper to
-   [`Examples/`](Examples) (not required - the files there aren't registered
+   [`Examples/`](GenericSpecimenManager/Examples) (not required - the files there aren't registered
    in CMake, they just document what a dedicated, named/iconed module would
    look like if one were ever needed).
