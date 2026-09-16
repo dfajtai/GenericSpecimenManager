@@ -260,6 +260,24 @@ class GlobalWindowLevelConfig:
 
 
 @dataclass
+class SliceRotationConfig:
+    """cfg.slice_rotation - an in-plane rotation (degrees, around each slice
+    view's own normal) applied to Red/Yellow/Green once a specimen loads -
+    identical to the Reformat module's rotation slider. Useful to correct a
+    systematic scan orientation across a whole study. Each view's angle is
+    independently optional (None = leave that view alone)."""
+    enabled: bool = False
+    red: Optional[float] = None
+    yellow: Optional[float] = None
+    green: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]):
+        """Build SliceRotationConfig from the config's top-level 'slice_rotation' block."""
+        return _from_dict(cls, d or {})
+
+
+@dataclass
 class BatchExportConfig:
     """cfg.batch_export - what batch_exporter() does with 'done' specimens (which segments/markups, where to write them)."""
     enabled: bool = False
@@ -348,6 +366,7 @@ class StudyConfig:
     landmarks: LandmarksConfig = field(default_factory=LandmarksConfig)
     volume_rendering: List[VolumeRenderingEntry] = field(default_factory=list)
     window_level: GlobalWindowLevelConfig = field(default_factory=GlobalWindowLevelConfig)
+    slice_rotation: SliceRotationConfig = field(default_factory=SliceRotationConfig)
     batch_export: BatchExportConfig = field(default_factory=BatchExportConfig)
     segment_editor: SegmentEditorConfig = field(default_factory=SegmentEditorConfig)
     batch_mode: BatchModeConfig = field(default_factory=BatchModeConfig)
@@ -376,6 +395,7 @@ class StudyConfig:
             landmarks=LandmarksConfig.from_dict(raw.get("landmarks")),
             volume_rendering=[VolumeRenderingEntry.from_dict(d) for d in (raw.get("volume_rendering") or [])],
             window_level=GlobalWindowLevelConfig.from_dict(raw.get("window_level")),
+            slice_rotation=SliceRotationConfig.from_dict(raw.get("slice_rotation")),
             batch_export=BatchExportConfig.from_dict(raw.get("batch_export")),
             segment_editor=SegmentEditorConfig.from_dict(raw.get("segment_editor")),
             batch_mode=BatchModeConfig.from_dict(raw.get("batch_mode")),

@@ -250,6 +250,7 @@ class ConfigEditorDialog(qt.QDialog):
         tabs.addTab(self._build_landmarks_tab(), "Landmarks")
         tabs.addTab(self._build_vr_tab(), "Volume rendering")
         tabs.addTab(self._build_wl_tab(), "Window/level")
+        tabs.addTab(self._build_slice_rotation_tab(), "Slice rotation")
         tabs.addTab(self._build_batch_export_tab(), "Batch export")
         tabs.addTab(self._build_segment_editor_tab(), "Segment editor")
         tabs.addTab(self._build_advanced_tab(), "Defaults / Presets (JSON)")
@@ -1055,6 +1056,29 @@ class ConfigEditorDialog(qt.QDialog):
         form.addRow("Max:", self.wlMaxEdit)
         return w
 
+    # ---- Slice rotation tab ----
+
+    def _build_slice_rotation_tab(self):
+        """Enabled + per-view (Red/Yellow/Green) in-plane rotation angle in degrees."""
+        w = qt.QWidget()
+        form = qt.QFormLayout(w)
+        self.chkSliceRotationEnabled = qt.QCheckBox("Enabled")
+        self.chkSliceRotationEnabled.setToolTip(
+            "Rotates Red/Yellow/Green in-plane (around each view's own normal) once a specimen loads - "
+            "identical to the Reformat module's rotation slider. Handy for correcting a systematic scan "
+            "orientation across a whole study. Leave a view's field empty to leave that view alone.")
+        form.addRow(self.chkSliceRotationEnabled)
+        self.sliceRotRedEdit = qt.QLineEdit()
+        self.sliceRotRedEdit.setPlaceholderText("degrees, e.g. 180")
+        form.addRow("Red:", self.sliceRotRedEdit)
+        self.sliceRotYellowEdit = qt.QLineEdit()
+        self.sliceRotYellowEdit.setPlaceholderText("degrees, e.g. -90")
+        form.addRow("Yellow:", self.sliceRotYellowEdit)
+        self.sliceRotGreenEdit = qt.QLineEdit()
+        self.sliceRotGreenEdit.setPlaceholderText("degrees, e.g. -90")
+        form.addRow("Green:", self.sliceRotGreenEdit)
+        return w
+
     # ---- Batch export tab ----
 
     def _build_batch_export_tab(self):
@@ -1366,13 +1390,14 @@ class ConfigEditorDialog(qt.QDialog):
                      self.segReferenceImageEdit, self.segPathPatternEdit,
                      self.lmCsvColumnEdit, self.lmPathPatternEdit, self.lmTemplateEdit, self.lmColorEdit,
                      self.wlMinEdit, self.wlMaxEdit,
+                     self.sliceRotRedEdit, self.sliceRotYellowEdit, self.sliceRotGreenEdit,
                      self.beReferenceImageEdit, self.beSegmentsFilterEdit, self.beOutputDirEdit,
                      self.brushDiameterEdit, self.activeEffectEdit):
             edit.text = ""
         self.doneColumnEdit.text = "done"
         self.segOutputFilenameEdit.text = "segment.seg.nrrd"
         for chk in (self.chkBatchMode, self.chkSegEnabled, self.chkLmEnabled,
-                    self.chkWlEnabled, self.chkBeEnabled, self.chkBeExportSegments,
+                    self.chkWlEnabled, self.chkSliceRotationEnabled, self.chkBeEnabled, self.chkBeExportSegments,
                     self.chkBeExportMarkups, self.chkBePerBatchSubfolder):
             chk.checked = False
         self.chkLmWritable.checked = True
@@ -1509,6 +1534,12 @@ class ConfigEditorDialog(qt.QDialog):
         self.chkWlEnabled.checked = bool(wl.get("enabled"))
         self.wlMinEdit.text = "" if wl.get("min") is None else str(wl["min"])
         self.wlMaxEdit.text = "" if wl.get("max") is None else str(wl["max"])
+
+        rot = cfg.get("slice_rotation", {}) or {}
+        self.chkSliceRotationEnabled.checked = bool(rot.get("enabled"))
+        self.sliceRotRedEdit.text = "" if rot.get("red") is None else str(rot["red"])
+        self.sliceRotYellowEdit.text = "" if rot.get("yellow") is None else str(rot["yellow"])
+        self.sliceRotGreenEdit.text = "" if rot.get("green") is None else str(rot["green"])
 
         be = cfg.get("batch_export", {}) or {}
         self.chkBeEnabled.checked = bool(be.get("enabled"))
@@ -1658,6 +1689,17 @@ class ConfigEditorDialog(qt.QDialog):
             if mx is not None:
                 wl["max"] = mx
             cfg["window_level"] = wl
+
+        if self.chkSliceRotationEnabled.checked:
+            rot = {"enabled": True}
+            red, yellow, green = _f(self.sliceRotRedEdit.text), _f(self.sliceRotYellowEdit.text), _f(self.sliceRotGreenEdit.text)
+            if red is not None:
+                rot["red"] = red
+            if yellow is not None:
+                rot["yellow"] = yellow
+            if green is not None:
+                rot["green"] = green
+            cfg["slice_rotation"] = rot
 
         if self.chkBeEnabled.checked:
             be = {

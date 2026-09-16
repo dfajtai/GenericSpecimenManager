@@ -461,6 +461,35 @@ class GenericSpecimen:
                 self.segmentation_node.GetDisplayNode().SetSegmentOpacity2DFill(seg_id, 0.85)
                 self.segmentation_node.GetDisplayNode().SetSegmentOpacity2DOutline(seg_id, 1)
 
+        self._apply_slice_rotation()
+
+    def _apply_slice_rotation(self):
+        """Apply cfg.slice_rotation's per-view (Red/Yellow/Green) in-plane rotation, if enabled. No-op for any view whose angle is left unset (None)."""
+        rot_cfg = self.cfg.slice_rotation
+        if not rot_cfg.enabled:
+            return
+        layoutManager = slicer.app.layoutManager()
+        for color, angle_deg in (("Red", rot_cfg.red), ("Yellow", rot_cfg.yellow), ("Green", rot_cfg.green)):
+            if angle_deg is None:
+                continue
+            sliceWidget = layoutManager.sliceWidget(color)
+            if sliceWidget is None:
+                continue
+            self._rotate_slice_in_plane(sliceWidget.mrmlSliceNode(), angle_deg)
+
+    def _rotate_slice_in_plane(self, sliceNode, angle_deg):
+        """In-plane rotation of one slice view, around its own normal - the
+        exact effect of the Reformat module's rotation slider. SliceToRAS's
+        local Z axis IS the slice's normal, so a plain RotateZ on a
+        vtkTransform seeded from the current matrix does it directly; no
+        need to decompose into RAS-space axes."""
+        sliceToRAS = sliceNode.GetSliceToRAS()
+        transform = vtk.vtkTransform()
+        transform.SetMatrix(sliceToRAS)
+        transform.RotateZ(angle_deg)
+        sliceNode.GetSliceToRAS().DeepCopy(transform.GetMatrix())
+        sliceNode.UpdateMatrices()
+
     def _start_volume_rendering(self, vr_entries):
         """Create one volume rendering display node per enabled entry in vr_entries (each with its own preset + optional range shift), then set up the 3D view/camera/orientation-marker and active markups list once, after the whole batch - not per image."""
         logic = slicer.modules.volumerendering.logic()
