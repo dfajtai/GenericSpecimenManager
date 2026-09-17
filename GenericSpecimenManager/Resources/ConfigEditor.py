@@ -48,6 +48,20 @@ VR_PRESET_CHOICES = [
     "CT-MIP", "CT-Muscle", "CT-Pulmonary-Arteries", "CT-Soft-Tissue", "CT-Air",
     "MR-Angio", "MR-Default", "MR-MIP", "MR-T2-Brain",
 ]
+# Curated but not guaranteed-exhaustive/exact Slicer/VTK enum constant names.
+# All Workspace-tab comboboxes built from these are editable, so a wrong or
+# missing entry is just a typing exercise, not a dead end.
+CROSSHAIR_MODE_CHOICES = [
+    "(unset)", "NoCrosshair", "ShowBasic", "ShowIntersection", "ShowHashmarks",
+    "ShowAll", "ShowSmallBasic", "ShowSmallIntersection",
+]
+CROSSHAIR_BEHAVIOR_CHOICES = [
+    "(unset)", "Normal", "Offset", "JumpSlice", "OffsetJumpSlice", "CenteredJumpSlice",
+]
+CROSSHAIR_THICKNESS_CHOICES = ["(unset)", "Fine", "Medium", "Thick"]
+RULER_TYPE_CHOICES = ["(unset)", "None", "Thin", "Thick"]
+ORIENTATION_MARKER_TYPE_CHOICES = ["(unset)", "None", "Cube", "Human", "Axes"]
+ORIENTATION_MARKER_SIZE_CHOICES = ["(unset)", "Small", "Medium", "Large"]
 
 
 def _read_csv_header(path):
@@ -248,11 +262,9 @@ class ConfigEditorDialog(qt.QDialog):
         tabs.addTab(self._build_images_tab(), "Images")
         tabs.addTab(self._build_segmentation_tab(), "Segmentation")
         tabs.addTab(self._build_landmarks_tab(), "Landmarks")
-        tabs.addTab(self._build_vr_tab(), "Volume rendering")
-        tabs.addTab(self._build_wl_tab(), "Window/level")
-        tabs.addTab(self._build_slice_rotation_tab(), "Slice rotation")
-        tabs.addTab(self._build_batch_export_tab(), "Batch export")
+        tabs.addTab(self._build_workspace_tab(), "Workspace")
         tabs.addTab(self._build_segment_editor_tab(), "Segment editor")
+        tabs.addTab(self._build_vr_tab(), "Volume rendering")
         tabs.addTab(self._build_advanced_tab(), "Defaults / Presets (JSON)")
         tabs.addTab(self._build_manual_tab(), "Manual edit config")
 
@@ -406,6 +418,30 @@ class ConfigEditorDialog(qt.QDialog):
         self.batchColumnEdit = qt.QLineEdit()
         self.batchColumnEdit.setPlaceholderText("database.csv column to group/filter by, e.g. batch")
         form.addRow("Batch column:", self.batchColumnEdit)
+
+        sep2 = qt.QFrame()
+        sep2.setFrameShape(qt.QFrame.HLine)
+        form.addRow(sep2)
+        form.addRow(qt.QLabel("<b>Batch export</b> - what batch_exporter() does with 'done' specimens"))
+
+        self.chkBeEnabled = qt.QCheckBox("Enabled")
+        form.addRow(self.chkBeEnabled)
+        self.chkBeExportSegments = qt.QCheckBox("Export segments")
+        form.addRow(self.chkBeExportSegments)
+        self.chkBeExportMarkups = qt.QCheckBox("Export markups")
+        form.addRow(self.chkBeExportMarkups)
+        self.beReferenceImageEdit = qt.QLineEdit()
+        self.beReferenceImageEdit.setToolTip("Reference volume for exporting segments to labelmaps. If empty, falls back to segmentation.reference_image.")
+        form.addRow("Reference image (name):", self.beReferenceImageEdit)
+        self.beSegmentsFilterEdit = qt.QLineEdit()
+        self.beSegmentsFilterEdit.setPlaceholderText("comma-separated segment names, empty = all")
+        form.addRow("Segments filter:", self.beSegmentsFilterEdit)
+        self.beOutputDirEdit, beOutputDirRow = self._file_row(directory=True)
+        self.beOutputDirEdit.setToolTip("Optional shared export folder for ALL specimens. If empty, each specimen exports into its own out_dir (this tab's Output dir pattern).")
+        form.addRow("Output dir (optional):", beOutputDirRow)
+        self.chkBePerBatchSubfolder = qt.QCheckBox("Per-batch subfolder (requires batch mode)")
+        self.chkBePerBatchSubfolder.setToolTip("Exports into <output_dir>/<batch value>/... instead of one flat folder. Needs 'Enable batch mode' above.")
+        form.addRow(self.chkBePerBatchSubfolder)
 
         return w
 
@@ -1039,70 +1075,86 @@ class ConfigEditorDialog(qt.QDialog):
             entries.append(entry)
         return entries
 
-    # ---- Window/level (global) tab ----
+    # ---- Workspace tab (window/level + slice rotation + crosshair/ruler/orientation marker) ----
 
-    def _build_wl_tab(self):
-        """The blanket (every-loaded-volume) window/level block - distinct from an Images-tab row's own per-image window_level."""
+    def _build_workspace_tab(self):
+        """Everything applied once, per-specimen, to the 3D Slicer workspace itself (not to the data): blanket window/level, slice rotation, crosshair mode/behavior/thickness, ruler, and 3D orientation marker."""
         w = qt.QWidget()
-        form = qt.QFormLayout(w)
-        self.chkWlEnabled = qt.QCheckBox("Enabled (applies to EVERY loaded volume)")
+        layout = qt.QVBoxLayout(w)
+
+        wlGroup = qt.QGroupBox("Window/level (every loaded volume)")
+        wlForm = qt.QFormLayout(wlGroup)
+        self.chkWlEnabled = qt.QCheckBox("Enabled")
         self.chkWlEnabled.setToolTip("Blanket min/max window applied to ALL loaded scalar volumes after a specimen loads - different from an Images-tab row's own per-image window_level.")
-        form.addRow(self.chkWlEnabled)
+        wlForm.addRow(self.chkWlEnabled)
         self.wlMinEdit = qt.QLineEdit()
         self.wlMinEdit.setToolTip("Lower display value, e.g. -150 for a typical CT soft-tissue window.")
-        form.addRow("Min:", self.wlMinEdit)
+        wlForm.addRow("Min:", self.wlMinEdit)
         self.wlMaxEdit = qt.QLineEdit()
         self.wlMaxEdit.setToolTip("Upper display value, e.g. 700 for a typical CT soft-tissue window.")
-        form.addRow("Max:", self.wlMaxEdit)
-        return w
+        wlForm.addRow("Max:", self.wlMaxEdit)
+        layout.addWidget(wlGroup)
 
-    # ---- Slice rotation tab ----
-
-    def _build_slice_rotation_tab(self):
-        """Enabled + per-view (Red/Yellow/Green) in-plane rotation angle in degrees."""
-        w = qt.QWidget()
-        form = qt.QFormLayout(w)
+        rotGroup = qt.QGroupBox("Slice rotation (in-plane, degrees)")
+        rotForm = qt.QFormLayout(rotGroup)
         self.chkSliceRotationEnabled = qt.QCheckBox("Enabled")
         self.chkSliceRotationEnabled.setToolTip(
             "Rotates Red/Yellow/Green in-plane (around each view's own normal) once a specimen loads - "
-            "identical to the Reformat module's rotation slider. Handy for correcting a systematic scan "
-            "orientation across a whole study. Leave a view's field empty to leave that view alone.")
-        form.addRow(self.chkSliceRotationEnabled)
+            "identical to the Reformat module's rotation slider. Leave a view's field empty to leave it alone.")
+        rotForm.addRow(self.chkSliceRotationEnabled)
         self.sliceRotRedEdit = qt.QLineEdit()
         self.sliceRotRedEdit.setPlaceholderText("degrees, e.g. 180")
-        form.addRow("Red:", self.sliceRotRedEdit)
+        rotForm.addRow("Red:", self.sliceRotRedEdit)
         self.sliceRotYellowEdit = qt.QLineEdit()
         self.sliceRotYellowEdit.setPlaceholderText("degrees, e.g. -90")
-        form.addRow("Yellow:", self.sliceRotYellowEdit)
+        rotForm.addRow("Yellow:", self.sliceRotYellowEdit)
         self.sliceRotGreenEdit = qt.QLineEdit()
         self.sliceRotGreenEdit.setPlaceholderText("degrees, e.g. -90")
-        form.addRow("Green:", self.sliceRotGreenEdit)
-        return w
+        rotForm.addRow("Green:", self.sliceRotGreenEdit)
+        layout.addWidget(rotGroup)
 
-    # ---- Batch export tab ----
+        chGroup = qt.QGroupBox("Crosshair")
+        chForm = qt.QFormLayout(chGroup)
+        chHint = qt.QLabel("Leave any field at (unset) to keep this module's usual default (ShowBasic / OffsetJumpSlice / Fine).")
+        chHint.setWordWrap(True)
+        chForm.addRow(chHint)
+        self.crosshairModeCombo = qt.QComboBox()
+        self.crosshairModeCombo.setEditable(True)
+        self.crosshairModeCombo.addItems(CROSSHAIR_MODE_CHOICES)
+        self.crosshairModeCombo.setToolTip("Which crosshair lines are drawn.")
+        chForm.addRow("Mode:", self.crosshairModeCombo)
+        self.crosshairBehaviorCombo = qt.QComboBox()
+        self.crosshairBehaviorCombo.setEditable(True)
+        self.crosshairBehaviorCombo.addItems(CROSSHAIR_BEHAVIOR_CHOICES)
+        self.crosshairBehaviorCombo.setToolTip("OffsetJumpSlice: clicking one view scrolls the others to follow, without recentering them.")
+        chForm.addRow("Behavior:", self.crosshairBehaviorCombo)
+        self.crosshairThicknessCombo = qt.QComboBox()
+        self.crosshairThicknessCombo.setEditable(True)
+        self.crosshairThicknessCombo.addItems(CROSSHAIR_THICKNESS_CHOICES)
+        chForm.addRow("Thickness:", self.crosshairThicknessCombo)
+        layout.addWidget(chGroup)
 
-    def _build_batch_export_tab(self):
-        """Enabled/export-segments/export-markups/reference image/segments filter/output dir/per-batch-subfolder."""
-        w = qt.QWidget()
-        form = qt.QFormLayout(w)
-        self.chkBeEnabled = qt.QCheckBox("Enabled")
-        form.addRow(self.chkBeEnabled)
-        self.chkBeExportSegments = qt.QCheckBox("Export segments")
-        form.addRow(self.chkBeExportSegments)
-        self.chkBeExportMarkups = qt.QCheckBox("Export markups")
-        form.addRow(self.chkBeExportMarkups)
-        self.beReferenceImageEdit = qt.QLineEdit()
-        self.beReferenceImageEdit.setToolTip("Reference volume for exporting segments to labelmaps. If empty, falls back to segmentation.reference_image.")
-        form.addRow("Reference image (name):", self.beReferenceImageEdit)
-        self.beSegmentsFilterEdit = qt.QLineEdit()
-        self.beSegmentsFilterEdit.setPlaceholderText("comma-separated segment names, empty = all")
-        form.addRow("Segments filter:", self.beSegmentsFilterEdit)
-        self.beOutputDirEdit, beOutputDirRow = self._file_row(directory=True)
-        self.beOutputDirEdit.setToolTip("Optional shared export folder for ALL specimens. If empty, each specimen exports into its own out_dir (General tab's Output dir pattern).")
-        form.addRow("Output dir (optional):", beOutputDirRow)
-        self.chkBePerBatchSubfolder = qt.QCheckBox("Per-batch subfolder (requires batch mode)")
-        self.chkBePerBatchSubfolder.setToolTip("Exports into <output_dir>/<batch value>/... instead of one flat folder. Needs 'Enable batch mode' on the General tab.")
-        form.addRow(self.chkBePerBatchSubfolder)
+        viewGroup = qt.QGroupBox("Ruler / 3D orientation marker")
+        viewForm = qt.QFormLayout(viewGroup)
+        viewHint = qt.QLabel("Both purely opt-in - (unset) leaves Slicer's own default/previous state alone.")
+        viewHint.setWordWrap(True)
+        viewForm.addRow(viewHint)
+        self.rulerTypeCombo = qt.QComboBox()
+        self.rulerTypeCombo.setEditable(True)
+        self.rulerTypeCombo.addItems(RULER_TYPE_CHOICES)
+        self.rulerTypeCombo.setToolTip("Adds a scale ruler to every slice view (Red/Yellow/Green).")
+        viewForm.addRow("Ruler:", self.rulerTypeCombo)
+        self.orientationMarkerTypeCombo = qt.QComboBox()
+        self.orientationMarkerTypeCombo.setEditable(True)
+        self.orientationMarkerTypeCombo.addItems(ORIENTATION_MARKER_TYPE_CHOICES)
+        self.orientationMarkerTypeCombo.setToolTip("Shape of the 3D view's orientation marker. Volume rendering always shows one (Axes/Large by default) regardless of this setting, unless overridden here.")
+        viewForm.addRow("3D marker type:", self.orientationMarkerTypeCombo)
+        self.orientationMarkerSizeCombo = qt.QComboBox()
+        self.orientationMarkerSizeCombo.setEditable(True)
+        self.orientationMarkerSizeCombo.addItems(ORIENTATION_MARKER_SIZE_CHOICES)
+        viewForm.addRow("3D marker size:", self.orientationMarkerSizeCombo)
+        layout.addWidget(viewGroup)
+
         return w
 
     # ---- Segment editor tab ----
@@ -1404,6 +1456,9 @@ class ConfigEditorDialog(qt.QDialog):
         self.chkBrushAbsolute.checked = True
         self.overwriteModeCombo.currentText = "none"
         self.brushShapeCombo.currentText = "(unset)"
+        for combo in (self.crosshairModeCombo, self.crosshairBehaviorCombo, self.crosshairThicknessCombo,
+                      self.rulerTypeCombo, self.orientationMarkerTypeCombo, self.orientationMarkerSizeCombo):
+            combo.currentText = "(unset)"
         self.seAttributesEdit.plainText = ""
         self.defaultsImageEdit.plainText = ""
         self.defaultsSegmentEdit.plainText = ""
@@ -1540,6 +1595,14 @@ class ConfigEditorDialog(qt.QDialog):
         self.sliceRotRedEdit.text = "" if rot.get("red") is None else str(rot["red"])
         self.sliceRotYellowEdit.text = "" if rot.get("yellow") is None else str(rot["yellow"])
         self.sliceRotGreenEdit.text = "" if rot.get("green") is None else str(rot["green"])
+
+        ws = cfg.get("workspace", {}) or {}
+        self.crosshairModeCombo.currentText = ws.get("crosshair_mode") or "(unset)"
+        self.crosshairBehaviorCombo.currentText = ws.get("crosshair_behavior") or "(unset)"
+        self.crosshairThicknessCombo.currentText = ws.get("crosshair_thickness") or "(unset)"
+        self.rulerTypeCombo.currentText = ws.get("ruler_type") or "(unset)"
+        self.orientationMarkerTypeCombo.currentText = ws.get("orientation_marker_type") or "(unset)"
+        self.orientationMarkerSizeCombo.currentText = ws.get("orientation_marker_size") or "(unset)"
 
         be = cfg.get("batch_export", {}) or {}
         self.chkBeEnabled.checked = bool(be.get("enabled"))
@@ -1700,6 +1763,21 @@ class ConfigEditorDialog(qt.QDialog):
             if green is not None:
                 rot["green"] = green
             cfg["slice_rotation"] = rot
+
+        ws = {}
+        for combo, key in (
+            (self.crosshairModeCombo, "crosshair_mode"),
+            (self.crosshairBehaviorCombo, "crosshair_behavior"),
+            (self.crosshairThicknessCombo, "crosshair_thickness"),
+            (self.rulerTypeCombo, "ruler_type"),
+            (self.orientationMarkerTypeCombo, "orientation_marker_type"),
+            (self.orientationMarkerSizeCombo, "orientation_marker_size"),
+        ):
+            value = (combo.currentText or "").strip()
+            if value and value != "(unset)":
+                ws[key] = value
+        if ws:
+            cfg["workspace"] = ws
 
         if self.chkBeEnabled.checked:
             be = {

@@ -442,11 +442,7 @@ class GenericSpecimen:
         for n in sliceCompositeNodes:
             n.SetLinkedControl(True)
 
-        crosshair = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
-        if crosshair:
-            crosshair.SetCrosshairBehavior(crosshair.OffsetJumpSlice)
-            crosshair.SetCrosshairToFine()
-            crosshair.SetCrosshairMode(crosshair.ShowBasic)
+        self._apply_workspace_settings()
 
         wl_cfg = self.cfg.window_level
         if wl_cfg.enabled:
@@ -462,6 +458,84 @@ class GenericSpecimen:
                 self.segmentation_node.GetDisplayNode().SetSegmentOpacity2DOutline(seg_id, 1)
 
         self._apply_slice_rotation()
+
+    def _resolve_enum(self, obj, name, default=None):
+        """Look up a named constant on a live MRML/VTK node instance by
+        string (e.g. crosshair, "ShowBasic" -> crosshair.ShowBasic) - lets
+        config authors specify Slicer/VTK enum values by their exact name
+        without us hardcoding every possible one. Falls back to `default`
+        if name is falsy; returns None (caller skips that setting) with a
+        printed warning if the resulting name doesn't exist on obj, so a
+        typo never crashes the load."""
+        value_name = name or default
+        if not value_name:
+            return None
+        if not hasattr(obj, value_name):
+            print(f"[GenericSpecimen] unknown enum constant '{value_name}' on {type(obj).__name__}, skipping")
+            return None
+        return getattr(obj, value_name)
+
+    def _apply_workspace_settings(self):
+        """Apply cfg.workspace's crosshair mode/behavior/thickness (falling
+        back to this module's long-standing defaults - ShowBasic /
+        OffsetJumpSlice / Fine - so an absent 'workspace' section changes
+        nothing), plus the purely opt-in ruler (per slice view) and 3D
+        orientation-marker settings."""
+        ws_cfg = self.cfg.workspace
+
+        crosshair = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
+        if crosshair:
+            mode = self._resolve_enum(crosshair, ws_cfg.crosshair_mode, "ShowBasic")
+            if mode is not None:
+                crosshair.SetCrosshairMode(mode)
+            behavior = self._resolve_enum(crosshair, ws_cfg.crosshair_behavior, "OffsetJumpSlice")
+            if behavior is not None:
+                crosshair.SetCrosshairBehavior(behavior)
+            thickness_name = ws_cfg.crosshair_thickness or "Fine"
+            thickness_setter = getattr(crosshair, f"SetCrosshairTo{thickness_name}", None)
+            if thickness_setter:
+                thickness_setter()
+            else:
+                print(f"[GenericSpecimen] unknown crosshair thickness '{thickness_name}', skipping")
+
+        if ws_cfg.ruler_type:
+            layoutManager = slicer.app.layoutManager()
+            for color in ("Red", "Yellow", "Green"):
+                sliceWidget = layoutManager.sliceWidget(color)
+                if sliceWidget is None:
+                    continue
+                sliceNode = sliceWidget.mrmlSliceNode()
+                ruler_value = self._resolve_enum(sliceNode, "RulerType" + ws_cfg.ruler_type)
+                if ruler_value is not None:
+                    sliceNode.SetRulerType(ruler_value)
+
+        if ws_cfg.orientation_marker_type or ws_cfg.orientation_marker_size:
+            layoutManager = slicer.app.layoutManager()
+            threeDWidget = layoutManager.threeDWidget(0)
+            if threeDWidget:
+                viewNode = threeDWidget.threeDView().mrmlViewNode()
+                if viewNode:
+                    self._apply_orientation_marker(viewNode)
+
+    def _apply_orientation_marker(self, viewNode, default_type=None, default_size=None):
+        """Set a 3D view node's orientation-marker type/size from
+        cfg.workspace (short names, e.g. "Axes"/"Large" - this method adds
+        the OrientationMarkerType/OrientationMarkerSize prefix itself),
+        falling back to default_type/default_size (full constant names,
+        e.g. "OrientationMarkerTypeAxes") when a field is unset - used by
+        _start_volume_rendering(), which always wants SOME marker even if
+        cfg.workspace doesn't specify one."""
+        ws_cfg = self.cfg.workspace
+        type_name = ("OrientationMarkerType" + ws_cfg.orientation_marker_type) if ws_cfg.orientation_marker_type else default_type
+        if type_name:
+            v = self._resolve_enum(viewNode, type_name)
+            if v is not None:
+                viewNode.SetOrientationMarkerType(v)
+        size_name = ("OrientationMarkerSize" + ws_cfg.orientation_marker_size) if ws_cfg.orientation_marker_size else default_size
+        if size_name:
+            v = self._resolve_enum(viewNode, size_name)
+            if v is not None:
+                viewNode.SetOrientationMarkerSize(v)
 
     def _apply_slice_rotation(self):
         """Apply cfg.slice_rotation's per-view (Red/Yellow/Green) in-plane rotation, if enabled. No-op for any view whose angle is left unset (None)."""
@@ -532,8 +606,7 @@ class GenericSpecimen:
             threeDView = threeDWidget.threeDView()
             viewNode = threeDView.mrmlViewNode()
             if viewNode:
-                viewNode.SetOrientationMarkerType(slicer.vtkMRMLAbstractViewNode.OrientationMarkerTypeAxes)
-                viewNode.SetOrientationMarkerSize(slicer.vtkMRMLAbstractViewNode.OrientationMarkerSizeLarge)
+                self._apply_orientation_marker(viewNode, default_type="OrientationMarkerTypeAxes", default_size="OrientationMarkerSizeLarge")
                 viewNode.SetBoxVisible(False)
             threeDView.resetFocalPoint()
             threeDView.resetCamera()

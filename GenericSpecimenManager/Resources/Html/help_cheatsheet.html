@@ -32,6 +32,7 @@
 <li><b>Key columns</b> - the composite specimen ID, e.g. <code>ID</code> or <code>ID,measurement</code> - must exist, with matching values, in <b>both</b> CSVs. Use <b>"Show CSV columns..."</b> to check.</li>
 <li><b>Table columns</b> - which database.csv columns appear (and are editable) in the main module's table. Any column works, not just <code>done</code>.</li>
 <li><b>Batch mode</b> - shows a batch-select combo after Initialize Study, filtering by the chosen database.csv column (e.g. <code>batch</code>).</li>
+<li><b>Batch export</b> (bottom of this tab) - what batch_exporter() does with 'done' specimens. <b>Per-batch subfolder</b> needs Batch mode also enabled; exports to <code>&lt;output_dir&gt;/&lt;batch value&gt;/...</code> instead of one flat folder.</li>
 </ul>
 
 <h2>&#128444; Images</h2>
@@ -61,26 +62,12 @@
 <li><b>Template file</b> - if a specimen has no markups yet, this file loads as the starting point (renamed to that specimen) instead of an empty fiducial list.</li>
 </ul>
 
-<h2>&#127760; Volume rendering</h2>
+<h2>&#128421; Workspace</h2>
 <ul>
-<li>One row per Images-tab image. <b>Any number</b> can have <b>Enable</b> checked at once - each gets its own independent 3D volume rendering.</li>
-<li><b>Preset</b> - a built-in Slicer VR preset name (editable combo - type your own if it's not in the list).</li>
-<li><b>Min/Max</b> - optional. Rescales the preset's opacity/color transfer function into that scalar range, e.g. narrowing a CT preset to a specific Hounsfield window for this specimen's data.</li>
-<li><b>Offset</b> - optional. Shifts the transfer function by a fixed amount, keeping its shape/spacing (classic "Shift" behavior). Wins over Min/Max if both are set.</li>
-<li>Leave Min/Max/Offset all empty to use the preset exactly as shipped.</li>
-<li><b>Refresh image list</b> - re-syncs rows with the Images tab (new/renamed/removed images), keeping existing settings for images that still exist by name.</li>
-</ul>
-<p class="note">Note: the render itself is correct, but Slicer's own Volume Rendering module's "Shift" slider won't reflect the offset - cosmetic only.</p>
-
-<h2>&#128260; Slice rotation</h2>
-<ul>
-<li>In-plane rotation (degrees) for Red/Yellow/Green, applied once a specimen loads - same as the Reformat module's rotation slider.</li>
-<li>Leave a view's field empty to leave that view alone.</li>
-</ul>
-
-<h2>&#128190; Batch export</h2>
-<ul>
-<li><b>Per-batch subfolder</b> - only works with Batch mode also enabled; exports to <code>&lt;output_dir&gt;/&lt;batch value&gt;/...</code> instead of one flat folder.</li>
+<li>Everything here is applied once, per specimen, to the 3D Slicer <i>workspace</i> itself - not to any data.</li>
+<li><b>Window/level</b> - blanket min/max for every loaded volume. <b>Slice rotation</b> - in-plane rotation (degrees) for Red/Yellow/Green, same as the Reformat module's slider; leave a view's field empty to leave it alone.</li>
+<li><b>Crosshair</b> - Mode/Behavior/Thickness dropdowns (editable - type the exact Slicer/VTK constant name if yours isn't listed). Leave at <code>(unset)</code> to keep this module's usual default (ShowBasic / OffsetJumpSlice / Fine).</li>
+<li><b>Ruler / 3D orientation marker</b> - both purely opt-in (<code>(unset)</code> = leave alone). Volume rendering always shows an orientation marker (Axes/Large by default) regardless, unless overridden here.</li>
 </ul>
 
 <h2>&#128394; Segment editor</h2>
@@ -115,6 +102,17 @@ Slicer version:</p>
 <li>Read the exact attribute name + value from the printed list, and add it under <b>Raw attributes</b> here
 (it's applied last, so it overrides the structured fields above if there's any conflict).</li>
 </ol>
+
+<h2>&#127760; Volume rendering</h2>
+<ul>
+<li>One row per Images-tab image. <b>Any number</b> can have <b>Enable</b> checked at once - each gets its own independent 3D volume rendering.</li>
+<li><b>Preset</b> - a built-in Slicer VR preset name (editable combo - type your own if it's not in the list).</li>
+<li><b>Min/Max</b> - optional. Rescales the preset's opacity/color transfer function into that scalar range, e.g. narrowing a CT preset to a specific Hounsfield window for this specimen's data.</li>
+<li><b>Offset</b> - optional. Shifts the transfer function by a fixed amount, keeping its shape/spacing (classic "Shift" behavior). Wins over Min/Max if both are set.</li>
+<li>Leave Min/Max/Offset all empty to use the preset exactly as shipped.</li>
+<li><b>Refresh image list</b> - re-syncs rows with the Images tab (new/renamed/removed images), keeping existing settings for images that still exist by name.</li>
+</ul>
+<p class="note">Note: the render itself is correct, but Slicer's own Volume Rendering module's "Shift" slider won't reflect the offset - cosmetic only.</p>
 
 <h2>&#127912; Defaults / Presets</h2>
 <p>Three layers, merged in this order for every image (last one wins, per field):</p>

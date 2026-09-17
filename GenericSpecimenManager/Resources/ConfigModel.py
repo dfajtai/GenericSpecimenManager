@@ -278,6 +278,34 @@ class SliceRotationConfig:
 
 
 @dataclass
+class WorkspaceConfig:
+    """cfg.workspace - crosshair, slice-view ruler, and 3D orientation-marker
+    appearance applied once per specimen load (_customize_workplace() /
+    _apply_workspace_settings()). Every field is optional; unset means
+    "leave Slicer's own default/previous value alone" - EXCEPT the three
+    crosshair fields, which fall back to this module's long-standing
+    defaults (ShowBasic / OffsetJumpSlice / Fine) when unset, so leaving
+    cfg.workspace out entirely changes nothing from before this feature
+    existed. Values are the exact Slicer/VTK enum constant NAME as a
+    string (e.g. "ShowBasic", "OffsetJumpSlice") for crosshair fields;
+    ruler_type/orientation_marker_type/orientation_marker_size use a SHORT
+    name (e.g. "Thin", "Axes", "Large") that the engine prefixes itself
+    (RulerType/OrientationMarkerType/OrientationMarkerSize) - see
+    GenericSpecimen._apply_workspace_settings()."""
+    crosshair_mode: Optional[str] = None
+    crosshair_behavior: Optional[str] = None
+    crosshair_thickness: Optional[str] = None
+    ruler_type: Optional[str] = None
+    orientation_marker_type: Optional[str] = None
+    orientation_marker_size: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]):
+        """Build WorkspaceConfig from the config's top-level 'workspace' block."""
+        return _from_dict(cls, d or {})
+
+
+@dataclass
 class BatchExportConfig:
     """cfg.batch_export - what batch_exporter() does with 'done' specimens (which segments/markups, where to write them)."""
     enabled: bool = False
@@ -367,6 +395,7 @@ class StudyConfig:
     volume_rendering: List[VolumeRenderingEntry] = field(default_factory=list)
     window_level: GlobalWindowLevelConfig = field(default_factory=GlobalWindowLevelConfig)
     slice_rotation: SliceRotationConfig = field(default_factory=SliceRotationConfig)
+    workspace: WorkspaceConfig = field(default_factory=WorkspaceConfig)
     batch_export: BatchExportConfig = field(default_factory=BatchExportConfig)
     segment_editor: SegmentEditorConfig = field(default_factory=SegmentEditorConfig)
     batch_mode: BatchModeConfig = field(default_factory=BatchModeConfig)
@@ -396,6 +425,7 @@ class StudyConfig:
             volume_rendering=[VolumeRenderingEntry.from_dict(d) for d in (raw.get("volume_rendering") or [])],
             window_level=GlobalWindowLevelConfig.from_dict(raw.get("window_level")),
             slice_rotation=SliceRotationConfig.from_dict(raw.get("slice_rotation")),
+            workspace=WorkspaceConfig.from_dict(raw.get("workspace")),
             batch_export=BatchExportConfig.from_dict(raw.get("batch_export")),
             segment_editor=SegmentEditorConfig.from_dict(raw.get("segment_editor")),
             batch_mode=BatchModeConfig.from_dict(raw.get("batch_mode")),
