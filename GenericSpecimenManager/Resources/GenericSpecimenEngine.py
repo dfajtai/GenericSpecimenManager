@@ -28,6 +28,11 @@ from Resources.ConfigModel import (
     merge_image_overrides, merge_segment_overrides,
 )
 from Resources.ConfigEditor import ConfigEditorDialog
+from Resources.LoggingSetup import logger
+from Resources.Definitions import (
+    HIDE_RELOAD_AND_TEST as _DEFINITIONS_HIDE_RELOAD_AND_TEST,
+    HIDE_HELP_AND_ACKNOWLEDGEMENT as _DEFINITIONS_HIDE_HELP_AND_ACKNOWLEDGEMENT,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -68,9 +73,9 @@ class GenericSpecimen:
 
     @property
     def out_dir(self):
-        """This specimen's output folder under study_dir, built by joining output_dir_pattern (a list of key/db column names) with their values for this row."""
-        parts = [str(self.context.get(k, self.db_info.get(k, k))) for k in self.cfg.output_dir_pattern]
-        return os.path.join(self.study_dir, *parts)
+        """This specimen's output folder under study_dir, built from output_dir_pattern - a curly-brace format string (e.g. "{ID}/{measurement}"), same placeholder rules as any other path_pattern in this schema."""
+        rel = self.cfg.output_dir_pattern.format(**self._context())
+        return os.path.join(self.study_dir, rel)
 
     def batch_value(self):
         """This specimen's value in the configured batch_mode.column, or None if batch mode isn't set up."""
@@ -206,7 +211,7 @@ class GenericSpecimen:
     def _add_empty_segment(self, segmentation_node, name, reference_volume_node, color=None):
         """Create a same-geometry, all-zero labelmap and add it as a new (empty) segment. Used both for source='empty' segments and as the fallback when a 'file' segment's path can't be resolved or loaded."""
         if reference_volume_node is None:
-            print(f"[GenericSpecimen] no reference volume, skipping empty segment '{name}'")
+            logger.warning(f"[GenericSpecimen] no reference volume, skipping empty segment '{name}'")
             return
         dummy = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
         slicer.modules.volumes.logic().CreateLabelVolumeFromVolume(slicer.mrmlScene, dummy, reference_volume_node)
@@ -231,7 +236,7 @@ class GenericSpecimen:
         except Exception:
             path = None
         if path is None:
-            print(f"[GenericSpecimen] segment '{name}': no path resolvable, creating empty segment instead")
+            logger.warning(f"[GenericSpecimen] segment '{name}': no path resolvable, creating empty segment instead")
             self._add_empty_segment(segmentation_node, name, reference_volume_node, color)
             return
         try:
@@ -243,7 +248,7 @@ class GenericSpecimen:
                 segmentation_node.AddSegmentFromBinaryLabelmapRepresentation(img, name)
             slicer.mrmlScene.RemoveNode(mask_node)
         except Exception:
-            print(f"[GenericSpecimen] unable to load segment image '{path}', creating empty segment '{name}'")
+            logger.warning(f"[GenericSpecimen] unable to load segment image '{path}', creating empty segment '{name}'")
             self._add_empty_segment(segmentation_node, name, reference_volume_node, color)
 
     def _load_segmentation(self, seg_cfg: SegmentationConfig):
@@ -252,12 +257,12 @@ class GenericSpecimen:
         ref_node = self.node_dict.get(seg_cfg.reference_image) if seg_cfg.reference_image else None
 
         if os.path.exists(out_path):
-            print("[GenericSpecimen] loading existing segmentation...")
+            logger.info("[GenericSpecimen] loading existing segmentation...")
             seg_node = slicer.util.loadSegmentation(out_path)
             if ref_node is not None:
                 seg_node.SetReferenceImageGeometryParameterFromVolumeNode(ref_node)
         else:
-            print("[GenericSpecimen] initializing new segmentation...")
+            logger.info("[GenericSpecimen] initializing new segmentation...")
             seg_node = slicer.vtkMRMLSegmentationNode()
             slicer.mrmlScene.AddNode(seg_node)
             seg_node.CreateDefaultDisplayNodes()
@@ -289,11 +294,11 @@ class GenericSpecimen:
             self.writeable["__markups__"] = m_path
 
     def load(self):
-        """Load everything configured for this specimen, in order: images (background/label/foreground slice-view layers applied once, after the loop), segmentation, landmarks, workspace setup (crosshair/blanket window-level/segment opacity), volume rendering, then - if segment_editor is configured - hand off to the Segment Editor."""
-        print(f"[GenericSpecimen] loading {self.label}")
+        """Load everything configured for this specimen, in order: images (background/label/foreground slice-view layers applied once, after the loop), segmentation, landmarks, workspace setup (crosshair/blanket window-level/segment opacity/default Four-Up layout), volume rendering, then - if segment_editor is configured - hand off to the Segment Editor. Prints an itemized table of what was actually loaded (and what was skipped, with why) at the end."""
         background_node = None
         label_node, label_opacity = None, None
         foreground_node, foreground_opacity = None, None
+        load_rows = []
 
         for raw_img_cfg in self._expand_image_entries():
             img_cfg = self._resolve_image_cfg(raw_img_cfg)
@@ -307,12 +312,14 @@ class GenericSpecimen:
             except Exception as e:
                 if required:
                     raise
-                print(f"[GenericSpecimen] optional image '{name}' not loaded: {e}")
+                logger.warning(f"[GenericSpecimen] optional image '{name}' not loaded: {e}")
+                load_rows.append((name, itype, img_cfg.role or "-", "skipped", str(e)))
                 continue
 
             self.node_dict[name] = node
             self.writeable[name] = path
             self._apply_visual_props(node, img_cfg)
+            load_rows.append((name, itype, img_cfg.role or "-", "loaded", path))
             opacity = img_cfg.opacity
             role = img_cfg.role
             if role == "background":
@@ -341,10 +348,14 @@ class GenericSpecimen:
         seg_cfg = self.cfg.segmentation
         if seg_cfg.enabled:
             self._load_segmentation(seg_cfg)
+            load_rows.append(("segmentation", "-", "-", "loaded" if self.segmentation_node else "skipped", self.segmentation_out_path()))
 
         lm_cfg = self.cfg.landmarks
         if lm_cfg.enabled:
             self._load_landmarks(lm_cfg)
+            load_rows.append(("markups", "-", "-", "loaded" if self.markups_node else "skipped", self.markups_out_path))
+
+        self._print_table(f"loaded {self.label}", ["item", "type", "role", "status", "path"], load_rows)
 
         self._customize_workplace()
 
@@ -368,7 +379,7 @@ class GenericSpecimen:
         try:
             segmentEditorWidget = slicer.modules.segmenteditor.widgetRepresentation().self().editor
         except Exception as e:
-            print(f"[GenericSpecimen] could not access the Segment Editor widget: {e}")
+            logger.warning(f"[GenericSpecimen] could not access the Segment Editor widget: {e}")
             return
 
         segmentEditorWidget.setSegmentationNode(self.segmentation_node)
@@ -383,7 +394,7 @@ class GenericSpecimen:
 
         editorNode = segmentEditorWidget.mrmlSegmentEditorNode()
         if editorNode is None:
-            print("[GenericSpecimen] Segment Editor widget produced no live node, skipping")
+            logger.warning("[GenericSpecimen] Segment Editor widget produced no live node, skipping")
             return
 
         se_cfg = self.cfg.segment_editor
@@ -426,7 +437,9 @@ class GenericSpecimen:
         slicer.util.selectModule("SegmentEditor")
 
     def _customize_workplace(self):
-        """Per-specimen workspace touch-ups: get-or-create (never replace - see the comment inline for why) the default Segment Editor node, link slice views, tune the crosshair, apply the blanket window/level if configured, and set every segment's 2D fill/outline opacity."""
+        """Per-specimen workspace touch-ups: get-or-create (never replace - see the comment inline for why) the default Segment Editor node, link slice views, switch to the standard Four-Up layout, tune the crosshair, apply the blanket window/level if configured, and set every segment's 2D fill/outline opacity."""
+        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
+
         defaultSegmentEditorNode = slicer.mrmlScene.GetDefaultNodeByClass("vtkMRMLSegmentEditorNode")
         if defaultSegmentEditorNode is None:
             defaultSegmentEditorNode = slicer.vtkMRMLSegmentEditorNode()
@@ -471,7 +484,7 @@ class GenericSpecimen:
         if not value_name:
             return None
         if not hasattr(obj, value_name):
-            print(f"[GenericSpecimen] unknown enum constant '{value_name}' on {type(obj).__name__}, skipping")
+            logger.warning(f"[GenericSpecimen] unknown enum constant '{value_name}' on {type(obj).__name__}, skipping")
             return None
         return getattr(obj, value_name)
 
@@ -496,7 +509,7 @@ class GenericSpecimen:
             if thickness_setter:
                 thickness_setter()
             else:
-                print(f"[GenericSpecimen] unknown crosshair thickness '{thickness_name}', skipping")
+                logger.warning(f"[GenericSpecimen] unknown crosshair thickness '{thickness_name}', skipping")
 
         if ws_cfg.ruler_type:
             layoutManager = slicer.app.layoutManager()
@@ -572,7 +585,7 @@ class GenericSpecimen:
         for vr_entry in vr_entries:
             src_node = self.node_dict.get(vr_entry.image)
             if src_node is None:
-                print(f"[GenericSpecimen] volume rendering source '{vr_entry.image}' not loaded, skipping")
+                logger.warning(f"[GenericSpecimen] volume rendering source '{vr_entry.image}' not loaded, skipping")
                 continue
 
             displayNode = logic.CreateVolumeRenderingDisplayNode()
@@ -643,7 +656,7 @@ class GenericSpecimen:
                 opacity = vp.GetScalarOpacity()
                 color = vp.GetRGBTransferFunction()
         except Exception as e:
-            print(f"[GenericSpecimen] could not access volume rendering transfer functions for '{image_name}': {e}")
+            logger.warning(f"[GenericSpecimen] could not access volume rendering transfer functions for '{image_name}': {e}")
             return
 
         if vr_entry.offset:
@@ -651,7 +664,7 @@ class GenericSpecimen:
                 self._offset_transfer_function(opacity, vr_entry.offset)
                 self._offset_transfer_function(color, vr_entry.offset)
             except Exception as e:
-                print(f"[GenericSpecimen] could not offset volume rendering range for '{image_name}': {e}")
+                logger.warning(f"[GenericSpecimen] could not offset volume rendering range for '{image_name}': {e}")
             return
 
         window_level = vr_entry.window_level
@@ -668,7 +681,7 @@ class GenericSpecimen:
             self._remap_transfer_function(opacity, new_range[0], new_range[1])
             self._remap_transfer_function(color, new_range[0], new_range[1])
         except Exception as e:
-            print(f"[GenericSpecimen] could not shift volume rendering range for '{image_name}': {e}")
+            logger.warning(f"[GenericSpecimen] could not shift volume rendering range for '{image_name}': {e}")
 
     def _offset_transfer_function(self, func, offset):
         """Shift every control point's x value by a fixed amount, leaving
@@ -738,11 +751,12 @@ class GenericSpecimen:
 
 
     def save(self):
-        """Write every 'writeable' node this specimen owns (segmentation, markups, any image explicitly tracked) back to its resolved path, creating the output folder(s) if needed."""
-        print(f"[GenericSpecimen] saving {self.label}")
+        """Write every 'writeable' node this specimen owns (segmentation, markups, any image explicitly tracked) back to its resolved path, creating the output folder(s) if needed. Prints an itemized table of what was actually written (and what was skipped, with why)."""
         if not os.path.isdir(self.out_dir):
             os.makedirs(self.out_dir, exist_ok=True)
+        save_rows = []
         for logical_name, path in self.writeable.items():
+            item = logical_name.strip("_") or logical_name
             out_dir = os.path.dirname(path)
             if out_dir and not os.path.isdir(out_dir):
                 os.makedirs(out_dir, exist_ok=True)
@@ -750,16 +764,38 @@ class GenericSpecimen:
                     self.markups_node if logical_name == "__markups__" else
                     self.node_dict.get(logical_name))
             if node is None:
+                save_rows.append((item, "skipped (no node)", path))
                 continue
             storage = node.CreateDefaultStorageNode()
             storage.SetFileName(path)
             storage.WriteData(node)
+            save_rows.append((item, "written", path))
+        self._print_table(f"saved {self.label} -> {self.out_dir}", ["item", "status", "path"], save_rows)
+
+    def _print_table(self, title, headers, rows):
+        """Print a simple, aligned ASCII table to the terminal - used for the itemized load/save summaries. Pure stdlib, no external table library needed."""
+        logger.info(f"[GenericSpecimen] {title}:")
+        if not rows:
+            logger.info("  (nothing)")
+            return
+        widths = [len(h) for h in headers]
+        for row in rows:
+            for i, cell in enumerate(row):
+                widths[i] = max(widths[i], len(str(cell)))
+
+        def fmt_row(cells):
+            return "  ".join(str(c).ljust(w) for c, w in zip(cells, widths))
+
+        logger.info("  " + fmt_row(headers))
+        logger.info("  " + "-" * (sum(widths) + 2 * (len(widths) - 1)))
+        for row in rows:
+            logger.info("  " + fmt_row(row))
 
     def close(self):
         """Remove every Slicer node this specimen created (images, segmentation, markups, volume rendering + its ROI) - called when switching to a different specimen or when the scene is closing."""
         if slicer.mrmlScene.IsClosing():
             return
-        print(f"[GenericSpecimen] closing {self.label}")
+        logger.info(f"[GenericSpecimen] closing {self.label}")
         for vr_node in self.volume_rendering_nodes:
             if vr_node and slicer.mrmlScene.IsNodePresent(vr_node):
                 slicer.mrmlScene.RemoveNode(vr_node)
@@ -825,7 +861,7 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
                 try:
                     self.load_config(config_path)
                 except Exception as e:
-                    print(f"[GenericSpecimenManager] failed to load config '{config_path}': {e}")
+                    logger.warning(f"[GenericSpecimenManager] failed to load config '{config_path}': {e}")
         if self.cfg:
             if not parameterNode.GetParameter("DatabaseCSVPath"):
                 parameterNode.SetParameter("DatabaseCSVPath", self._abs_path(self.cfg.database_csv_path))
@@ -879,7 +915,7 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
             specimen.done_col_index = self.dbColumnNames.index(done_col) if done_col in self.dbColumnNames else None
             self.specimens[key] = specimen
 
-        print(f"[GenericSpecimenManager] initialized {len(self.specimens)} specimens")
+        logger.info(f"[GenericSpecimenManager] initialized {len(self.specimens)} specimens")
         self._configure_segment_editor_defaults()
 
     def _configure_segment_editor_defaults(self):
@@ -977,7 +1013,7 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
                 # (has a segmentation attached) - not a bare/template node.
                 existing_node.SetActiveEffectName(se_cfg.active_effect)
 
-        print(f"[GenericSpecimenManager] segment editor defaults applied: overwrite={overwrite_value}, attrs={attrs}, "
+        logger.info(f"[GenericSpecimenManager] segment editor defaults applied: overwrite={overwrite_value}, attrs={attrs}, "
               f"active_effect_requested={se_cfg.active_effect}, patched_existing_node={existing_node is not None}")
 
     def batch_values(self):
@@ -1048,16 +1084,20 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         if not isinstance(self.active_specimen, GenericSpecimen):
             self.info("There is no active specimen to save.")
             return
-        self.active_specimen.save()
+        sp = self.active_specimen
+        sp.save()
         if inform_user:
-            self.info(f"Specimen '{self.active_specimen.key_values}' saved.")
+            key_lines = "\n".join(f"  {col}: {val}" for col, val in zip(self.cfg.key_columns, sp.key_values))
+            self.info(f"Specimen saved.\n\n{key_lines}\n\n  folder: {sp.out_dir}")
 
-    def save_db(self):
-        """Write the live database table back to its CSV file."""
+    def save_db(self, inform_user=True):
+        """Write the live database table back to its CSV file; optionally show a confirmation popup."""
         db_path = self.getParameterNode().GetParameter("DatabaseCSVPath")
         storage = self.dbTable.CreateDefaultStorageNode()
         storage.SetFileName(db_path)
         storage.WriteData(self.dbTable)
+        if inform_user:
+            self.info(f"Database CSV saved.\n\n  path: {db_path}")
 
     @property
     def hasActiveSpecimen(self):
@@ -1073,6 +1113,13 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
 
     """The actual module GUI: config/CSV path pickers, the specimen table, batch-select combo, and the load/save/close/batch-export buttons. Subclassed per named wrapper module (CONFIG_PATH set) or used directly for the general-purpose config-picker module (CONFIG_PATH=None)."""
     CONFIG_PATH = None
+
+    # Actual on/off values live in Resources/Definitions.py (one place for
+    # every hardcoded toggle in this module) - kept as class attributes here
+    # too, so a subclass could still override just its own instance if ever
+    # needed, without touching the shared default.
+    HIDE_RELOAD_AND_TEST = _DEFINITIONS_HIDE_RELOAD_AND_TEST
+    HIDE_HELP_AND_ACKNOWLEDGEMENT = _DEFINITIONS_HIDE_HELP_AND_ACKNOWLEDGEMENT
     UI_RESOURCE = "UI/GenericSpecimenManager.ui"
 
     import os as _os
@@ -1135,9 +1182,9 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
 
         # ScriptedLoadableModuleWidget.setup() above only builds this when
         # Slicer's global Edit > Application Settings > Developer > "Enable
-        # developer mode" is on - hide it either way, since Reload/Test/Edit
-        # source buttons aren't meant for this module's end users.
-        if hasattr(self, "reloadCollapsibleButton"):
+        # developer mode" is on. Gated by HIDE_RELOAD_AND_TEST (class
+        # attribute above) - flip that to False to keep showing it.
+        if self.HIDE_RELOAD_AND_TEST and hasattr(self, "reloadCollapsibleButton"):
             self.reloadCollapsibleButton.hide()
 
         self.initializeParameterNode()
@@ -1149,19 +1196,21 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
     def enter(self):
         """Standard hook: Slicer calls this every time the user switches into this module."""
         self.initializeParameterNode()
-        self._setHelpSectionVisible(False)
+        if self.HIDE_HELP_AND_ACKNOWLEDGEMENT:
+            self._setHelpSectionVisible(False)
 
     def exit(self):
         """Standard hook: Slicer calls this every time the user switches away from this module."""
         self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-        self._setHelpSectionVisible(True)
+        if self.HIDE_HELP_AND_ACKNOWLEDGEMENT:
+            self._setHelpSectionVisible(True)
 
     def _setHelpSectionVisible(self, visible):
         """Show/hide the module panel's Help & Acknowledgement section via slicer.util.setModuleHelpSectionVisible() - a module-panel-wide (not per-module) setting, hence toggled in enter()/exit() rather than once in setup(). Defensively wrapped: an older Slicer build without this helper just leaves the section as-is instead of raising."""
         try:
             slicer.util.setModuleHelpSectionVisible(visible)
         except Exception as e:
-            print(f"[GenericSpecimenManager] could not toggle the Help section (older Slicer build?): {e}")
+            logger.warning(f"[GenericSpecimenManager] could not toggle the Help section (older Slicer build?): {e}")
 
     def onSceneStartClose(self, caller, event):
         """Close the active specimen (without confirmation - the scene is going away regardless) before the MRML scene is actually torn down."""
@@ -1239,18 +1288,22 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         fname = QFileDialog.getOpenFileName(None, 'Open config', str(self.ui.tbConfigPath.text), "JSON files (*.json)")
         if not fname:
             return
-        self._parameterNode.SetParameter("ConfigPath", fname)
+        self._loadConfigIntoScene(fname)
+
+    def _loadConfigIntoScene(self, path):
+        """Load `path` into this module's active Logic/parameter node and pre-fill the Database/Preseg CSV path fields from it - exactly what onBtnSelectConfig does after a browse, but reusable with an already-known path (e.g. the Config Editor's "reload after save" prompt, which calls this instead of making the user browse again)."""
+        self._parameterNode.SetParameter("ConfigPath", path)
         try:
-            self.logic.load_config(fname)
+            self.logic.load_config(path)
             self._parameterNode.SetParameter("DatabaseCSVPath", self.logic._abs_path(self.logic.cfg.database_csv_path))
             self._parameterNode.SetParameter("PresegCSVPath", self.logic._abs_path(self.logic.cfg.preseg_csv_path))
         except Exception as e:
             slicer.util.errorDisplay(f"Failed to load config: {e}")
 
     def onBtnConfigEditor(self):
-        """Open the Config Editor, pre-loaded with whatever config is currently active in this module."""
+        """Open the Config Editor, pre-loaded with whatever config is currently active in this module. Passes _loadConfigIntoScene as the post-save reload hook, so Save can offer to push the change live."""
         current_path = str(self.ui.tbConfigPath.text).strip() or None
-        self._configEditorDialog = ConfigEditorDialog(slicer.util.mainWindow(), initial_path=current_path)
+        self._configEditorDialog = ConfigEditorDialog(slicer.util.mainWindow(), initial_path=current_path, on_saved=self._loadConfigIntoScene)
         self._configEditorDialog.setWindowModality(qt.Qt.NonModal)
         self._configEditorDialog.show()
         self._configEditorDialog.raise_()
@@ -1499,7 +1552,7 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
                 return
             col_name = columns[col]
             if col_name not in self.logic.dbColumnNames:
-                print(f"[GenericSpecimenManager] column '{col_name}' not present in database.csv, not writing back")
+                logger.warning(f"[GenericSpecimenManager] column '{col_name}' not present in database.csv, not writing back")
                 return
             real_col = self.logic.dbColumnNames.index(col_name)
             val = tbl.item(row, col).text()
@@ -1568,12 +1621,12 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
 def batch_exporter(logic: GenericSpecimenManagerLogic):
     """Export every 'done' specimen's segments/markups to disk, driven entirely by cfg.batch_export (+ cfg.batch_mode.column for optional per-batch subfolders). No GUI involved - callable standalone from the Python console with just a Logic instance."""
     if logic.hasActiveSpecimen:
-        print("Please close the active specimen before running a batch export.")
+        logger.warning("Please close the active specimen before running a batch export.")
         return
     cfg = logic.cfg
     be_cfg = cfg.batch_export
     if not be_cfg.enabled:
-        print("[batch_exporter] batch_export is not enabled in the config.")
+        logger.warning("[batch_exporter] batch_export is not enabled in the config.")
         return
 
     logic.initializeStudy()
@@ -1614,7 +1667,7 @@ def batch_exporter(logic: GenericSpecimenManagerLogic):
                 out_file = os.path.join(out_dir, f"{specimen.label}-{seg_name}.nii.gz")
                 storage.SetFileName(out_file)
                 storage.WriteData(labelmap)
-                print(f"[batch_exporter] saved {out_file}")
+                logger.info(f"[batch_exporter] saved {out_file}")
                 slicer.mrmlScene.RemoveNode(storage)
                 slicer.mrmlScene.RemoveNode(labelmap)
 
@@ -1623,7 +1676,7 @@ def batch_exporter(logic: GenericSpecimenManagerLogic):
             storage = specimen.markups_node.CreateDefaultStorageNode()
             storage.SetFileName(out_file)
             storage.WriteData(specimen.markups_node)
-            print(f"[batch_exporter] saved {out_file}")
+            logger.info(f"[batch_exporter] saved {out_file}")
             slicer.mrmlScene.RemoveNode(storage)
 
         logic.close_active_specimen(no_question=True)

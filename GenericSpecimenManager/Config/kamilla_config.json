@@ -13,10 +13,7 @@
     "Comment",
     "done"
   ],
-  "output_dir_pattern": [
-    "software",
-    "accession"
-  ],
+  "output_dir_pattern": "segmentations/{software}/{accession}",
   "batch_mode": {
     "enabled": true,
     "column": "software"

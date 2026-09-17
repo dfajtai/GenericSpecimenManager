@@ -384,7 +384,7 @@ class StudyConfig:
     key_columns: List[str] = field(default_factory=lambda: ["ID"])
     done_column: str = "done"
     table_columns: List[str] = field(default_factory=list)
-    output_dir_pattern: List[str] = field(default_factory=list)
+    output_dir_pattern: Optional[str] = None
 
     defaults: DefaultsConfig = field(default_factory=DefaultsConfig)
     presets: Dict[str, ImageConfig] = field(default_factory=dict)
@@ -414,7 +414,7 @@ class StudyConfig:
             key_columns=list(key_columns),
             done_column=done_column,
             table_columns=list(raw.get("table_columns", list(key_columns) + [done_column])),
-            output_dir_pattern=list(raw.get("output_dir_pattern", list(key_columns))),
+            output_dir_pattern=raw.get("output_dir_pattern") or "/".join(f"{{{k}}}" for k in key_columns),
 
             defaults=DefaultsConfig.from_dict(raw.get("defaults")),
             presets={name: ImageConfig.from_dict(d) for name, d in raw.get("presets", {}).items()},

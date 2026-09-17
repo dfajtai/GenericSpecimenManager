@@ -25,43 +25,18 @@ import os
 import csv
 import json
 
+from Resources.LoggingSetup import logger
+from Resources.Definitions import (
+    ROLE_CHOICES, TYPE_CHOICES, SOURCE_CHOICES, OVERWRITE_CHOICES, BRUSH_SHAPE_CHOICES,
+    COLOR_TABLE_CHOICES, VR_PRESET_CHOICES, CROSSHAIR_MODE_CHOICES, CROSSHAIR_BEHAVIOR_CHOICES,
+    CROSSHAIR_THICKNESS_CHOICES, RULER_TYPE_CHOICES, ORIENTATION_MARKER_TYPE_CHOICES,
+    ORIENTATION_MARKER_SIZE_CHOICES,
+)
+
 import qt
 
 
 DEFAULT_SEGMENT_COLOR = (0.9, 0.9, 0.2)
-ROLE_CHOICES = ["(none)", "background", "label", "foreground"]
-TYPE_CHOICES = ["volume", "labelmap"]
-SOURCE_CHOICES = ["file", "empty"]
-OVERWRITE_CHOICES = ["none", "all_segments", "visible_segments"]
-BRUSH_SHAPE_CHOICES = ["(unset)", "sphere", "circle"]
-COLOR_TABLE_CHOICES = [
-    "", "Grey", "Rainbow", "Random", "Labels", "GenericAnatomyColors",
-    "Warm1", "Warm2", "Warm3", "Cool1", "Cool2", "Cool3",
-    "PET-Heat", "PET-Rainbow", "PET-MaximumIntensityProjection", "PET-DICOM",
-    "vtkMRMLColorTableNodeRed", "vtkMRMLColorTableNodeGreen", "vtkMRMLColorTableNodeBlue",
-    "vtkMRMLColorTableNodeYellow", "vtkMRMLColorTableNodeCyan", "vtkMRMLColorTableNodeMagenta",
-]
-VR_PRESET_CHOICES = [
-    "", "CT-AAA", "CT-AAA2", "CT-Air", "CT-Bone", "CT-Bones", "CT-Cardiac", "CT-Cardiac2", "CT-Cardiac3",
-    "CT-Chest-Contrast-Enhanced", "CT-Chest-Vessels", "CT-Coronary-Arteries", "CT-Coronary-Arteries-2",
-    "CT-Coronary-Arteries-3", "CT-Cropped-Volume-Bone", "CT-Fat", "CT-Liver-Vasculature", "CT-Lung",
-    "CT-MIP", "CT-Muscle", "CT-Pulmonary-Arteries", "CT-Soft-Tissue", "CT-Air",
-    "MR-Angio", "MR-Default", "MR-MIP", "MR-T2-Brain",
-]
-# Curated but not guaranteed-exhaustive/exact Slicer/VTK enum constant names.
-# All Workspace-tab comboboxes built from these are editable, so a wrong or
-# missing entry is just a typing exercise, not a dead end.
-CROSSHAIR_MODE_CHOICES = [
-    "(unset)", "NoCrosshair", "ShowBasic", "ShowIntersection", "ShowHashmarks",
-    "ShowAll", "ShowSmallBasic", "ShowSmallIntersection",
-]
-CROSSHAIR_BEHAVIOR_CHOICES = [
-    "(unset)", "Normal", "Offset", "JumpSlice", "OffsetJumpSlice", "CenteredJumpSlice",
-]
-CROSSHAIR_THICKNESS_CHOICES = ["(unset)", "Fine", "Medium", "Thick"]
-RULER_TYPE_CHOICES = ["(unset)", "None", "Thin", "Thick"]
-ORIENTATION_MARKER_TYPE_CHOICES = ["(unset)", "None", "Cube", "Human", "Axes"]
-ORIENTATION_MARKER_SIZE_CHOICES = ["(unset)", "Small", "Medium", "Large"]
 
 
 def _read_csv_header(path):
@@ -218,17 +193,18 @@ class _TextPopup(qt.QDialog):
 class ConfigEditorDialog(qt.QDialog):
 
     """Standalone, non-modal window for building/editing a study config.json without hand-editing JSON. Opens pre-loaded with whatever config is active in the main module (if any); New/Load both confirm before discarding unsaved changes."""
-    def __init__(self, parent=None, initial_path=None):
-        """Build the whole dialog and, if initial_path is given, load that config immediately (skipping the discard-changes prompt, since there's nothing to discard yet)."""
+    def __init__(self, parent=None, initial_path=None, on_saved=None):
+        """Build the whole dialog and, if initial_path is given, load that config immediately (skipping the discard-changes prompt, since there's nothing to discard yet). on_saved, if given, is called as on_saved(path) after every successful Save - the main module passes its own "load this config into the active scene" logic here, so Save can offer to push the change live instead of requiring a manual re-browse there."""
         qt.QDialog.__init__(self, parent)
         self.setWindowTitle("Config Editor")
-        self.resize(1180, 720)
+        self.resize(1200, 720)
 
         self._current_path = None
         self._preseg_abs_path = ""    # true absolute preseg path, tracked separately from its (possibly relative) display text
         self._dirty = False
         self._image_advanced = []    # per-row extra dict: window_level/threshold/interpolate
         self._segment_colors = []    # per-row [r,g,b] or None
+        self._on_saved = on_saved
 
         self._build_ui()
 
@@ -248,10 +224,14 @@ class ConfigEditorDialog(qt.QDialog):
         newBtn.connect('clicked(bool)', lambda checked=False: self._onNew())
         loadBtn = qt.QPushButton("Load from file...")
         loadBtn.connect('clicked(bool)', lambda checked=False: self._onLoadFromFile())
+        reloadBtn = qt.QPushButton("Reload from disk")
+        reloadBtn.setToolTip("Re-reads the CURRENTLY OPEN file from disk - handy after editing it outside this dialog (e.g. hand-editing the JSON, or another process/script writing it), without having to browse again.")
+        reloadBtn.connect('clicked(bool)', lambda checked=False: self._onReload())
         helpBtn = qt.QPushButton("Help")
         helpBtn.connect('clicked(bool)', lambda checked=False: self._onShowHelp())
         topRow.addWidget(newBtn)
         topRow.addWidget(loadBtn)
+        topRow.addWidget(reloadBtn)
         topRow.addStretch(1)
         topRow.addWidget(helpBtn)
         outer.addLayout(topRow)
@@ -368,27 +348,32 @@ class ConfigEditorDialog(qt.QDialog):
         w = qt.QWidget()
         form = qt.QFormLayout(w)
 
+        self.studyDirEdit, studyDirRow = self._file_row(directory=True)
+        self.studyDirEdit.setPlaceholderText("default: preseg CSV's folder")
+        self.studyDirEdit.setToolTip(
+            "Base folder every relative path in the config resolves against. Optional, but set this "
+            "FIRST if you're going to set it at all - the two CSV pickers below show their path "
+            "relative to whatever Study dir already contains at the moment you browse, so setting it "
+            "afterward won't retroactively shorten paths you already picked. Leave empty to default "
+            "to the preseg CSV's own folder.")
+        form.addRow("Study dir (optional, set first):", studyDirRow)
+
         self.presegEdit, presegRow = self._file_row(
             on_change=self._onPresegChanged,
             relative_to=lambda: self.studyDirEdit.text.strip())
-        self.presegEdit.setToolTip("Shown relative to Study dir below if that's set - hover for the full path.")
+        self.presegEdit.setToolTip("Shown relative to Study dir above if that's set - hover for the full path.")
         self.presegEdit.editingFinished.connect(
             lambda: self._onPresegChanged(self._resolve_csv_path(self.presegEdit.text)))
         form.addRow("Images / preseg CSV:", presegRow)
         self.dbEdit, dbRow = self._file_row(
             relative_to=lambda: self.studyDirEdit.text.strip() or os.path.dirname(self._preseg_abs_path or ""))
-        self.dbEdit.setToolTip("Shown relative to Study dir below (or to the preseg CSV's folder if Study dir is empty) - hover for the full path.")
+        self.dbEdit.setToolTip("Shown relative to Study dir above (or to the preseg CSV's folder if Study dir is empty) - hover for the full path.")
         form.addRow("Database CSV:", dbRow)
 
         showColsBtn = qt.QPushButton("Show CSV columns (copyable)...")
         showColsBtn.setToolTip("Reads the header row of both CSVs above and lists all columns - copy names from here into the fields below/Images tab.")
         showColsBtn.connect('clicked(bool)', lambda checked=False: self._onShowCsvColumns())
         form.addRow(showColsBtn)
-
-        self.studyDirEdit, studyDirRow = self._file_row(directory=True)
-        self.studyDirEdit.setPlaceholderText("default: preseg CSV's folder")
-        self.studyDirEdit.setToolTip("Base folder every relative path in the config resolves against. Leave empty to default to the preseg CSV's own folder.")
-        form.addRow("Study dir (optional override):", studyDirRow)
 
         self.keyColumnsEdit = qt.QLineEdit()
         self.keyColumnsEdit.setPlaceholderText("comma-separated, e.g. ID,measurement")
@@ -404,8 +389,19 @@ class ConfigEditorDialog(qt.QDialog):
         self.tableColumnsEdit.setToolTip("Which database.csv columns appear (and are editable) in the main module's specimen table. Any column works, not just done.")
         form.addRow("Table columns:", self.tableColumnsEdit)
         self.outputDirPatternEdit = qt.QLineEdit()
-        self.outputDirPatternEdit.setPlaceholderText("comma-separated, e.g. ID,measurement")
-        self.outputDirPatternEdit.setToolTip("Key column names joined to build each specimen's output folder under study_dir, e.g. ID,measurement -> study_dir/<ID>/<measurement>/")
+        self.outputDirPatternEdit.setPlaceholderText("e.g. {ID}/{measurement}")
+        self.outputDirPatternEdit.setToolTip(
+            "Builds each specimen's OWN output folder, where its segmentation/markups/exports get "
+            "written. Same {curly-brace} placeholder style as every other 'path pattern' field in this "
+            "editor (Segmentation/Landmarks tabs) - anything in {braces} is a column name whose VALUE "
+            "gets substituted in; everything else (slashes, dashes, ...) is literal text.\n\n"
+            "Worked example: {ID}/{measurement} with a row ID='D001', measurement='baseline' -> output "
+            "folder study_dir/D001/baseline/\n\n"
+            "A shorter pattern (just {ID}) would instead put every measurement of the same specimen "
+            "into one shared folder study_dir/D001/ - only do this if that's actually what you want, "
+            "since two rows with the same ID but different measurement would then overwrite each "
+            "other's files. Leave empty to default to your Key columns, in order (e.g. Key columns "
+            "ID,measurement -> {ID}/{measurement} automatically).")
         form.addRow("Output dir pattern:", self.outputDirPatternEdit)
 
         sep = qt.QFrame()
@@ -838,11 +834,18 @@ class ConfigEditorDialog(qt.QDialog):
         self.segPathPatternEdit = qt.QLineEdit()
         self.segPathPatternEdit.setPlaceholderText("e.g. {ID}/{segment_name}.nii.gz - default naming for segments without their own path")
         self.segPathPatternEdit.setToolTip(
-            "Fallback file-naming template used for any segment row that has no CSV column "
-            "and no path pattern of its own. Placeholders: {segment_name} and any key_column "
-            "or database/preseg CSV column name, e.g. {ID}, {measurement}.\n"
-            "Example: {ID}/{measurement}/{ID}-{segment_name}.nii.gz\n"
-            "Leave empty if every segment is 'empty' (manual) or has its own csv_column.")
+            "Only used as a FALLBACK: when a segment row (below) has Source=file but no csv_column "
+            "and no path pattern of its own, this pattern builds that segment's file path instead. "
+            "Segments with Source=empty never use this - they're always a blank, manually-drawn "
+            "placeholder, no file involved.\n\n"
+            "Placeholders in curly braces get replaced per specimen: any key column or database/"
+            "preseg CSV column name (e.g. {ID}, {measurement}), plus {segment_name} - THIS segment "
+            "row's own Name column.\n\n"
+            "Worked example: pattern = {ID}/{measurement}/{ID}-{segment_name}.nii.gz. For specimen "
+            "ID='D001', measurement='baseline', and a segment row named 'liver' with no csv_column "
+            "-> resolves to study_dir/D001/baseline/D001-liver.nii.gz\n\n"
+            "Leave this empty if every segment is Source=empty, or every segment already has its own "
+            "csv_column set in the table below.")
         form.addRow("Path pattern (default):", self.segPathPatternEdit)
         self.segOutputFilenameEdit = qt.QLineEdit("segment.seg.nrrd")
         self.segOutputFilenameEdit.setToolTip("Filename (inside each specimen's output folder) the segmentation is saved to/loaded from.")
@@ -985,9 +988,12 @@ class ConfigEditorDialog(qt.QDialog):
         vr_header.setSectionResizeMode(0, qt.QHeaderView.Stretch)             # Image - names can be long
         vr_header.setSectionResizeMode(1, qt.QHeaderView.ResizeToContents)    # Enable - just a checkbox
         vr_header.setSectionResizeMode(2, qt.QHeaderView.Stretch)             # Preset - VR preset names are long (e.g. CT-Chest-Contrast-Enhanced)
-        vr_header.setSectionResizeMode(3, qt.QHeaderView.ResizeToContents)    # Min - short numbers
-        vr_header.setSectionResizeMode(4, qt.QHeaderView.ResizeToContents)    # Max - short numbers
-        vr_header.setSectionResizeMode(5, qt.QHeaderView.ResizeToContents)    # Offset - short numbers
+        # Min/Max/Offset hold empty QLineEdits until typed into, so
+        # ResizeToContents would shrink them to near-zero - give them a
+        # fixed-but-resizable starting width instead.
+        for col in (3, 4, 5):
+            vr_header.setSectionResizeMode(col, qt.QHeaderView.Interactive)
+            self.vrTable.setColumnWidth(col, 70)
         layout.addWidget(self.vrTable)
 
         refreshBtn = qt.QPushButton("Refresh image list from Images tab")
@@ -1338,7 +1344,7 @@ class ConfigEditorDialog(qt.QDialog):
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
-            print(f"[ConfigEditor] could not load example_presets.json: {e}")
+            logger.warning(f"[ConfigEditor] could not load example_presets.json: {e}")
             data = {}
         data.pop("_comment", None)
         self._example_presets_cache = data
@@ -1488,6 +1494,15 @@ class ConfigEditorDialog(qt.QDialog):
         if fname:
             self._load_from_file(fname)
 
+    def _onReload(self):
+        """Re-read the currently open file from disk, without browsing - e.g. after it was edited outside this dialog. No-op with a friendly message if nothing's open yet."""
+        if not self._current_path:
+            qt.QMessageBox.information(self, "Config Editor", "Nothing to reload - no file is currently open (use 'Load from file...' first).")
+            return
+        if not self._confirm_discard():
+            return
+        self._load_from_file(self._current_path, ask_confirm=False)
+
     def _load_from_file(self, path, ask_confirm=True):
         """Read+parse a config.json from disk and populate the whole form from it."""
         if ask_confirm and not self._confirm_discard():
@@ -1527,7 +1542,7 @@ class ConfigEditorDialog(qt.QDialog):
             self._onPresegChanged(self._preseg_abs_path)
         self.doneColumnEdit.text = cfg.get("done_column", "done")
         self.tableColumnsEdit.text = ",".join(cfg.get("table_columns", []))
-        self.outputDirPatternEdit.text = ",".join(cfg.get("output_dir_pattern", []))
+        self.outputDirPatternEdit.text = cfg.get("output_dir_pattern", "") or ""
 
         bm = cfg.get("batch_mode", {}) or {}
         self.chkBatchMode.checked = bool(bm.get("enabled"))
@@ -1705,7 +1720,7 @@ class ConfigEditorDialog(qt.QDialog):
         }
         table_cols = _csv_list(self.tableColumnsEdit.text)
         cfg["table_columns"] = table_cols or (cfg["key_columns"] + [cfg["done_column"]])
-        out_pattern = _csv_list(self.outputDirPatternEdit.text)
+        out_pattern = self.outputDirPatternEdit.text.strip()
         if out_pattern:
             cfg["output_dir_pattern"] = out_pattern
 
@@ -1862,7 +1877,19 @@ class ConfigEditorDialog(qt.QDialog):
         self._current_path = out_path
         self._dirty = False
         self._updateTitle()
-        qt.QMessageBox.information(self, "Config Editor", f"Saved: {out_path}")
+
+        if self._on_saved:
+            ret = qt.QMessageBox.question(
+                self, "Config Editor",
+                f"Saved: {out_path}\n\nReload this config in the active module now?",
+                qt.QMessageBox.Yes | qt.QMessageBox.No)
+            if ret == qt.QMessageBox.Yes:
+                try:
+                    self._on_saved(out_path)
+                except Exception as e:
+                    qt.QMessageBox.critical(self, "Config Editor", f"Saved, but reload failed: {e}")
+        else:
+            qt.QMessageBox.information(self, "Config Editor", f"Saved: {out_path}")
         return True
 
     def closeEvent(self, event):
@@ -1872,5 +1899,5 @@ class ConfigEditorDialog(qt.QDialog):
                 event.ignore()
                 return
         except Exception as e:
-            print(f"[ConfigEditor] closeEvent check failed, closing anyway: {e}")
+            logger.warning(f"[ConfigEditor] closeEvent check failed, closing anyway: {e}")
         event.accept()
