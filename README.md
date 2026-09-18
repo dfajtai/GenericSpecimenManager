@@ -26,6 +26,8 @@ GenericSpecimenManager/                          <- repo root (this README, top 
     │   ├── ConfigModel.py                        <- dataclasses: StudyConfig and the rest of the schema
     │   ├── GenericSpecimenEngine.py               <- the actual logic (Logic, GenericSpecimen, Widget base, batch export)
     │   ├── ConfigEditor.py                       <- the dialog behind the "Config Editor..." button
+    │   ├── Definitions.py                        <- every hardcoded toggle/curated choice list, in ONE place
+    │   ├── LoggingSetup.py                       <- shared logger, optional log-to-file
     │   ├── Presets/example_presets.json          <- Config Editor's preset catalogue - extensible without code
     │   ├── Html/                                 <- Config Editor Help / example-presets HTML content - extensible without code
     │   │   ├── help_cheatsheet.html
@@ -48,10 +50,12 @@ Each file's responsibility:
 | [`Resources/ConfigModel.py`](GenericSpecimenManager/Resources/ConfigModel.py) | the typed, attribute-accessed representation of `config.json` (dataclasses) |
 | [`Resources/GenericSpecimenEngine.py`](GenericSpecimenManager/Resources/GenericSpecimenEngine.py) | `Logic`, `GenericSpecimen` (load/save/close one specimen), the Widget base class, batch export |
 | [`Resources/ConfigEditor.py`](GenericSpecimenManager/Resources/ConfigEditor.py) | GUI for building/editing `config.json` without hand-writing JSON |
+| [`Resources/Definitions.py`](GenericSpecimenManager/Resources/Definitions.py) | every hardcoded toggle (e.g. `HIDE_HELP_AND_ACKNOWLEDGEMENT`) and curated dropdown-choice list, in one findable place |
+| [`Resources/LoggingSetup.py`](GenericSpecimenManager/Resources/LoggingSetup.py) | the shared `logger` every other file uses instead of `print()`, with an optional log-to-file toggle |
 | [`Resources/Presets/example_presets.json`](GenericSpecimenManager/Resources/Presets/example_presets.json) | Config Editor's preset catalogue - **data, not code**, freely extensible |
 | [`Resources/Html/*.html`](GenericSpecimenManager/Resources/Html) | Config Editor's Help + example-presets popup content - **data, not code**, freely extensible |
 
-All four Python files are **100% docstring-covered** (classes, methods,
+All Python files are **100% docstring-covered** (classes, methods,
 nested helper functions too) - VS Code's Outline panel / hover tooltips give
 useful context with zero digging. For the trickier parts (Segment Editor
 node handling, VTK transfer-function remapping, path resolution) there are
@@ -89,7 +93,7 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
   "key_columns": ["ID"],                       // composite key, present in BOTH csvs
   "done_column": "done",
   "table_columns": ["ID", "comment", "done"],  // ANY database.csv column can be shown/edited
-  "output_dir_pattern": ["ID"],                // builds every specimen's output folder
+  "output_dir_pattern": "{ID}",                 // curly-brace format string, builds each specimen's output folder
 
   "defaults": {
     "image":   { /* ImageConfig fields - see below - applied to every images[] row */ },
@@ -169,31 +173,87 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
 A "Config Editor..." button lives in every module GUI. It's a standalone,
 non-modal window that **automatically opens pre-loaded with whatever config
 is currently active in the main module** (if any). Nearly the whole schema
-is editable tab-by-tab, without hand-writing JSON:
+is editable tab-by-tab, without hand-writing JSON. Tabs are ordered as a
+data-flow story: what to load, in what order it's used, then how the
+workspace/tools around it behave:
 
-| tab | contents |
+| tab | in a sentence |
 |---|---|
-| General | paths (shown relative to study dir after browsing), key/table/output-dir columns, batch_mode, "Show CSV columns..." (both CSVs' headers + the columns common to both = likely key-column candidates) |
-| Images | quick-add table (column name + Add + Labelmap checkbox) + the main table (name, csv_column, pattern/strip, type, role, required, **Preset dropdown** - populated live from the Presets JSON, **Color table dropdown** - curated list + freely editable, opacity) + "Edit advanced..." popup (window_level/threshold/interpolate) + a live **Effective settings** preview for the selected row |
-| Segmentation | enabled, reference_image, path_pattern, output_filename, a segments table (name, source, csv_column, path_pattern, color picker) |
-| Landmarks | enabled, csv_column, path_pattern, template_path, writable, color |
-| Volume rendering | a **table**, one row per Images-tab image: Image / Enable / Preset (dropdown) / Min / Max - any number of images can be enabled at once; "Refresh image list" keeps it in sync as the Images tab changes |
-| Window/level | the global (every loaded volume) enabled/min/max |
-| Batch export | enabled, export_segments/markups, reference_image, segments_filter, output_dir, per_batch_subfolder |
-| Segment editor | overwrite_mode, brush (shape/diameter/"Use absolute size (mm)" checkbox), active_effect, raw attributes (JSON) |
-| Defaults / Presets | `defaults.image`, `defaults.segment`, `presets` as JSON fields, with a worked example of the merge order, "Insert example..." (defaults.image) and "Show example presets..." (13 ready-made CT/MRI/PET/overlay presets, in an HTML card view, with an "Insert ALL" button) |
-| Manual edit config | a live preview of the actual JSON that would be written ("Refresh from form") + loading hand-edited JSON back into the tabs ("Apply to form") - Save always builds from the tabs, so hand edits here need Apply first or they won't be saved |
+| General | paths, key/table/output-dir columns, batch export |
+| Images | the images[] table + live merge preview |
+| Segmentation | segments[] table + reference/path pattern |
+| Landmarks | markups file/template config |
+| Workspace | window/level, slice rotation, crosshair, ruler, 3D marker |
+| Segment editor | brush/overwrite-mode/active-effect defaults |
+| Volume rendering | per-image VR table (enable/preset/shift) |
+| Defaults / Presets | the `defaults`/`presets` JSON + example catalogue |
+| Manual edit config | raw-JSON preview and round-trip |
+
+**General** - Study dir first (set it before browsing the two CSVs below - they
+display relative to whatever it already contains); key/table/output-dir
+columns; "Show CSV columns..." (both CSVs' headers + the columns common to
+both = likely key-column candidates); **Batch export** fields at the bottom
+(enabled, export_segments/markups, reference_image, segments_filter,
+output_dir, per_batch_subfolder).
+
+**Images** - quick-add table (column name + Add + Labelmap checkbox); the main
+table (name, csv_column, pattern/strip, type, role, required, **Preset**
+dropdown populated live from the Presets JSON, **Color table** dropdown -
+curated + freely editable, opacity); "Edit advanced..." popup (window_level/
+threshold/interpolate); a live **Effective settings** preview for the
+selected row.
+
+**Segmentation** - enabled, reference_image, path_pattern, output_filename; a
+segments table (name, source, csv_column, path_pattern, color picker).
+
+**Landmarks** - enabled, csv_column, path_pattern, template_path, writable,
+color.
+
+**Workspace** - blanket window/level; slice rotation (Red/Yellow/Green,
+degrees); crosshair mode/behavior/thickness; ruler and 3D orientation
+marker - all applied once per specimen load. Every field defaults to
+`(unset)` (leave Slicer's own default alone) except the three crosshair
+fields, which fall back to this module's long-standing defaults.
+
+**Segment editor** - overwrite_mode; brush (shape/diameter/"Use absolute size
+(mm)" checkbox); active_effect; raw attributes (JSON).
+
+**Volume rendering** - a table, one row per Images-tab image: Image / Enable /
+Preset (dropdown) / Min / Max / Offset. Any number of images can be enabled
+at once; "Refresh image list" keeps it in sync as the Images tab changes.
+
+**Defaults / Presets** - `defaults.image`, `defaults.segment`, `presets` as
+JSON fields, with a worked example of the merge order; "Insert example..."
+(defaults.image) and "Show example presets..." (13 ready-made CT/MRI/PET/
+overlay presets, HTML card view, "Insert ALL" button).
+
+**Manual edit config** - a live preview of the actual JSON that would be
+written ("Refresh from form") and loading hand-edited JSON back into the
+tabs ("Apply to form"). Save always builds from the tabs, so hand edits
+here need Apply first or they won't be saved.
 
 **Help**: a "Help" button opens a `QTextBrowser`-rendered HTML cheat sheet
-(scrollable, copyable - not a wall of plain text) - 10 sections, one per
-tab, with concrete examples (e.g. the Segment Editor section includes a
-real node-attribute dump plus step-by-step instructions for finding the
-exact attribute name on your own Slicer version).
+(source: [`Resources/Html/help_cheatsheet.html`](GenericSpecimenManager/Resources/Html/help_cheatsheet.html);
+scrollable, copyable - not a wall of plain text), one section per tab (in
+the same order as the tabs), with concrete examples (e.g. the Segment
+Editor section includes a real node-attribute dump plus step-by-step
+instructions for finding the exact attribute name on your own Slicer
+version).
+
+**New / Load from file / Reload from disk**: New and Load from file both
+prompt Save/Discard/Cancel first if the form has unsaved changes. Reload
+from disk re-reads the CURRENTLY open file - handy after hand-editing it
+outside the dialog, without having to browse again.
+
+**Save -> reload in the active module**: right after a successful Save, if
+the dialog was opened from the main module (not standalone), it offers to
+push the just-saved config straight into the active scene - the same as
+clicking "Select .json file" there again, without having to re-browse.
 
 **Workflow safety**: every field is watched for changes (a `_dirty` flag),
-the title bar shows a trailing `*` while dirty; **New** and **Load from
-file** both prompt Save/Discard/Cancel first; closing (button or window
-"X") does the same, **defensively wrapped** - if anything in that
+the title bar shows a trailing `*` while dirty; closing (button or window
+"X") also prompts Save/Discard/Cancel, **defensively wrapped** - if anything in that
+
 save-prompt logic itself throws, the window still closes rather than
 getting stuck open (see below for why that mattered in practice).
 
@@ -383,6 +443,38 @@ closed first, or export/save could get attributed to the wrong row.
 
 Per-batch export: with `batch_export.per_batch_subfolder: true`, exports go
 into `<out_dir>/<batch_value>/...` folders instead of one flat folder.
+
+## Logging & feedback
+
+Every file uses the shared `logger` from
+[`Resources/LoggingSetup.py`](GenericSpecimenManager/Resources/LoggingSetup.py)
+instead of bare `print()`. Terminal output looks exactly like plain
+`print()` did before (just the message, no extra noise); flip
+`DEBUG_LOG_TO_FILE = True` in that file to ALSO write every line to
+`~/GenericSpecimenManager.log`, timestamped, alongside the terminal -
+useful when troubleshooting something after the fact or a crash that
+scrolled the terminal away.
+
+**Itemized load/save summaries**: `GenericSpecimen.load()`/`.save()` print
+an aligned ASCII table (`_print_table()`, pure stdlib) of every item
+touched - image name/type/role, segmentation, markups - with its status
+(loaded/skipped/written) and resolved path. A save also announces the
+specimen's output folder in the table title.
+
+**"Save progress" / "Save database CSV" popups** are pretty-printed,
+key-value style, and name the actual folder/path written - not just a bare
+tuple of key values.
+
+Every hardcoded toggle and curated dropdown-choice list (e.g.
+`HIDE_HELP_AND_ACKNOWLEDGEMENT`, the Workspace tab's crosshair/ruler/marker
+choices) lives in
+[`Resources/Definitions.py`](GenericSpecimenManager/Resources/Definitions.py) -
+one file to check when looking for a knob to turn, instead of hunting
+through class bodies.
+
+A specimen load always switches the layout to the standard Four-Up view
+(Red/Yellow/Green/3D) - hardcoded, no config option, since there wasn't a
+good reason to make this configurable.
 
 ## Development notes
 

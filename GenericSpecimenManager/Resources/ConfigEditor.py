@@ -1140,26 +1140,62 @@ class ConfigEditorDialog(qt.QDialog):
         chForm.addRow("Thickness:", self.crosshairThicknessCombo)
         layout.addWidget(chGroup)
 
-        viewGroup = qt.QGroupBox("Ruler / 3D orientation marker")
-        viewForm = qt.QFormLayout(viewGroup)
-        viewHint = qt.QLabel("Both purely opt-in - (unset) leaves Slicer's own default/previous state alone.")
-        viewHint.setWordWrap(True)
-        viewForm.addRow(viewHint)
+        rulerGroup = qt.QGroupBox("Ruler")
+        rulerForm = qt.QFormLayout(rulerGroup)
         self.rulerTypeCombo = qt.QComboBox()
         self.rulerTypeCombo.setEditable(True)
         self.rulerTypeCombo.addItems(RULER_TYPE_CHOICES)
-        self.rulerTypeCombo.setToolTip("Adds a scale ruler to every slice view (Red/Yellow/Green).")
-        viewForm.addRow("Ruler:", self.rulerTypeCombo)
+        self.rulerTypeCombo.setToolTip("Adds a scale ruler to every slice view (Red/Yellow/Green). (unset) leaves Slicer's own default/previous state alone.")
+        rulerForm.addRow("Type:", self.rulerTypeCombo)
+        layout.addWidget(rulerGroup)
+
+        markerRow = qt.QHBoxLayout()
+
+        marker3dGroup = qt.QGroupBox("3D marker")
+        marker3dForm = qt.QFormLayout(marker3dGroup)
         self.orientationMarkerTypeCombo = qt.QComboBox()
         self.orientationMarkerTypeCombo.setEditable(True)
         self.orientationMarkerTypeCombo.addItems(ORIENTATION_MARKER_TYPE_CHOICES)
-        self.orientationMarkerTypeCombo.setToolTip("Shape of the 3D view's orientation marker. Volume rendering always shows one (Axes/Large by default) regardless of this setting, unless overridden here.")
-        viewForm.addRow("3D marker type:", self.orientationMarkerTypeCombo)
+        self.orientationMarkerTypeCombo.setToolTip(
+            "Shape of the orientation marker shown in the 3D view. (unset) leaves it alone - except "
+            "Volume rendering, which always shows one (Axes/Large) regardless, unless overridden here.")
+        marker3dForm.addRow("Type:", self.orientationMarkerTypeCombo)
         self.orientationMarkerSizeCombo = qt.QComboBox()
         self.orientationMarkerSizeCombo.setEditable(True)
         self.orientationMarkerSizeCombo.addItems(ORIENTATION_MARKER_SIZE_CHOICES)
-        viewForm.addRow("3D marker size:", self.orientationMarkerSizeCombo)
-        layout.addWidget(viewGroup)
+        marker3dForm.addRow("Size:", self.orientationMarkerSizeCombo)
+        markerRow.addWidget(marker3dGroup)
+
+        marker2dGroup = qt.QGroupBox("2D marker")
+        marker2dForm = qt.QFormLayout(marker2dGroup)
+        self.orientationMarker2dTypeCombo = qt.QComboBox()
+        self.orientationMarker2dTypeCombo.setEditable(True)
+        self.orientationMarker2dTypeCombo.addItems(ORIENTATION_MARKER_TYPE_CHOICES)
+        self.orientationMarker2dTypeCombo.setToolTip(
+            "Same marker, shown in every slice view (Red/Yellow/Green) instead of the 3D view - slice "
+            "views support the same marker property. (unset) leaves it alone.")
+        marker2dForm.addRow("Type:", self.orientationMarker2dTypeCombo)
+        self.orientationMarker2dSizeCombo = qt.QComboBox()
+        self.orientationMarker2dSizeCombo.setEditable(True)
+        self.orientationMarker2dSizeCombo.addItems(ORIENTATION_MARKER_SIZE_CHOICES)
+        marker2dForm.addRow("Size:", self.orientationMarker2dSizeCombo)
+        markerRow.addWidget(marker2dGroup)
+
+        layout.addLayout(markerRow)
+
+        conventionGroup = qt.QGroupBox("View convention (left/right display)")
+        conventionLayout = qt.QVBoxLayout(conventionGroup)
+        conventionHint = qt.QLabel(
+            "Which side of the screen shows the patient's right. Mutually exclusive - only affects "
+            "Axial and Coronal views (Sagittal has no left/right ambiguity to flip).")
+        conventionHint.setWordWrap(True)
+        conventionLayout.addWidget(conventionHint)
+        self.radioRadiological = qt.QRadioButton("Radiological - patient's right on screen-LEFT (Slicer's own default)")
+        self.radioNeurological = qt.QRadioButton("Neurological - patient's right on screen-RIGHT")
+        self.radioRadiological.setChecked(True)
+        conventionLayout.addWidget(self.radioRadiological)
+        conventionLayout.addWidget(self.radioNeurological)
+        layout.addWidget(conventionGroup)
 
         return w
 
@@ -1460,10 +1496,12 @@ class ConfigEditorDialog(qt.QDialog):
             chk.checked = False
         self.chkLmWritable.checked = True
         self.chkBrushAbsolute.checked = True
+        self.radioRadiological.setChecked(True)
         self.overwriteModeCombo.currentText = "none"
         self.brushShapeCombo.currentText = "(unset)"
         for combo in (self.crosshairModeCombo, self.crosshairBehaviorCombo, self.crosshairThicknessCombo,
-                      self.rulerTypeCombo, self.orientationMarkerTypeCombo, self.orientationMarkerSizeCombo):
+                      self.rulerTypeCombo, self.orientationMarkerTypeCombo, self.orientationMarkerSizeCombo,
+                      self.orientationMarker2dTypeCombo, self.orientationMarker2dSizeCombo):
             combo.currentText = "(unset)"
         self.seAttributesEdit.plainText = ""
         self.defaultsImageEdit.plainText = ""
@@ -1616,8 +1654,12 @@ class ConfigEditorDialog(qt.QDialog):
         self.crosshairBehaviorCombo.currentText = ws.get("crosshair_behavior") or "(unset)"
         self.crosshairThicknessCombo.currentText = ws.get("crosshair_thickness") or "(unset)"
         self.rulerTypeCombo.currentText = ws.get("ruler_type") or "(unset)"
-        self.orientationMarkerTypeCombo.currentText = ws.get("orientation_marker_type") or "(unset)"
-        self.orientationMarkerSizeCombo.currentText = ws.get("orientation_marker_size") or "(unset)"
+        self.orientationMarkerTypeCombo.currentText = ws.get("orientation_marker_3d_type") or "(unset)"
+        self.orientationMarkerSizeCombo.currentText = ws.get("orientation_marker_3d_size") or "(unset)"
+        self.orientationMarker2dTypeCombo.currentText = ws.get("orientation_marker_2d_type") or "(unset)"
+        self.orientationMarker2dSizeCombo.currentText = ws.get("orientation_marker_2d_size") or "(unset)"
+        self.radioNeurological.setChecked(ws.get("view_convention") == "neurological")
+        self.radioRadiological.setChecked(ws.get("view_convention") != "neurological")
 
         be = cfg.get("batch_export", {}) or {}
         self.chkBeEnabled.checked = bool(be.get("enabled"))
@@ -1785,12 +1827,18 @@ class ConfigEditorDialog(qt.QDialog):
             (self.crosshairBehaviorCombo, "crosshair_behavior"),
             (self.crosshairThicknessCombo, "crosshair_thickness"),
             (self.rulerTypeCombo, "ruler_type"),
-            (self.orientationMarkerTypeCombo, "orientation_marker_type"),
-            (self.orientationMarkerSizeCombo, "orientation_marker_size"),
+            (self.orientationMarkerTypeCombo, "orientation_marker_3d_type"),
+            (self.orientationMarkerSizeCombo, "orientation_marker_3d_size"),
+            (self.orientationMarker2dTypeCombo, "orientation_marker_2d_type"),
+            (self.orientationMarker2dSizeCombo, "orientation_marker_2d_size"),
         ):
             value = (combo.currentText or "").strip()
             if value and value != "(unset)":
                 ws[key] = value
+
+        if self.radioNeurological.isChecked():
+            ws["view_convention"] = "neurological"
+
         if ws:
             cfg["workspace"] = ws
 

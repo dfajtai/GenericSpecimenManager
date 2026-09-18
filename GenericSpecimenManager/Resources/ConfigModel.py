@@ -279,25 +279,36 @@ class SliceRotationConfig:
 
 @dataclass
 class WorkspaceConfig:
-    """cfg.workspace - crosshair, slice-view ruler, and 3D orientation-marker
-    appearance applied once per specimen load (_customize_workplace() /
-    _apply_workspace_settings()). Every field is optional; unset means
-    "leave Slicer's own default/previous value alone" - EXCEPT the three
-    crosshair fields, which fall back to this module's long-standing
-    defaults (ShowBasic / OffsetJumpSlice / Fine) when unset, so leaving
-    cfg.workspace out entirely changes nothing from before this feature
-    existed. Values are the exact Slicer/VTK enum constant NAME as a
-    string (e.g. "ShowBasic", "OffsetJumpSlice") for crosshair fields;
-    ruler_type/orientation_marker_type/orientation_marker_size use a SHORT
-    name (e.g. "Thin", "Axes", "Large") that the engine prefixes itself
+    """cfg.workspace - crosshair, slice-view ruler, orientation-marker (3D
+    view and/or 2D slice views), and L/R view convention, applied once per
+    specimen load (_customize_workplace() / _apply_workspace_settings()).
+    Every field is optional; unset means "leave Slicer's own default/
+    previous value alone" - EXCEPT the three crosshair fields, which fall
+    back to this module's long-standing defaults (ShowBasic /
+    OffsetJumpSlice / Fine) when unset, so leaving cfg.workspace out
+    entirely changes nothing from before this feature existed. Values are
+    the exact Slicer/VTK enum constant NAME as a string (e.g. "ShowBasic",
+    "OffsetJumpSlice") for crosshair fields; ruler_type/
+    orientation_marker_*_type/orientation_marker_*_size use a SHORT name
+    (e.g. "Thin", "Axes", "Large") that the engine prefixes itself
     (RulerType/OrientationMarkerType/OrientationMarkerSize) - see
     GenericSpecimen._apply_workspace_settings()."""
     crosshair_mode: Optional[str] = None
     crosshair_behavior: Optional[str] = None
     crosshair_thickness: Optional[str] = None
     ruler_type: Optional[str] = None
-    orientation_marker_type: Optional[str] = None
-    orientation_marker_size: Optional[str] = None
+    # vtkMRMLSliceNode inherits the same OrientationMarkerType/Size property
+    # as the 3D view node (both extend vtkMRMLAbstractViewNode), so the
+    # marker can be shown in the 3D view, the slice views, or both -
+    # independently configured here.
+    orientation_marker_3d_type: Optional[str] = None
+    orientation_marker_3d_size: Optional[str] = None
+    orientation_marker_2d_type: Optional[str] = None
+    orientation_marker_2d_size: Optional[str] = None
+    # "radiological" (Slicer's own default: patient's right on screen-left)
+    # or "neurological" (patient's right on screen-right). Unset = leave
+    # Slicer's current slice orientation presets alone.
+    view_convention: Optional[str] = None
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):

@@ -18,6 +18,18 @@ HIDE_RELOAD_AND_TEST = False
 HIDE_HELP_AND_ACKNOWLEDGEMENT = True
 
 
+# ---- Specimen save behavior (GenericSpecimen) ----
+# When True (default), a loaded image (volume/labelmap) is only written back
+# to disk on save if it was actually modified since it was loaded/last
+# written (checked via the node's own GetModifiedSinceRead()) - most images
+# in a study are read-only source data, not something anyone edits, so
+# writing them back every save is pure wasted I/O. Segmentation and markups
+# are never affected by this - they're always saved, since those ARE the
+# point of this module. Flip to False to go back to always writing every
+# loaded image on every save, regardless of whether it changed.
+IMAGES_READ_ONLY_BY_DEFAULT = True
+
+
 # ---- Config Editor: curated (but editable) dropdown choices ----
 # None of these lists need to be exhaustive or 100% exact - every combobox
 # built from one is editable, so a missing/wrong entry is just a typing

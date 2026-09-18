@@ -32,6 +32,7 @@ from Resources.LoggingSetup import logger
 from Resources.Definitions import (
     HIDE_RELOAD_AND_TEST as _DEFINITIONS_HIDE_RELOAD_AND_TEST,
     HIDE_HELP_AND_ACKNOWLEDGEMENT as _DEFINITIONS_HIDE_HELP_AND_ACKNOWLEDGEMENT,
+    IMAGES_READ_ONLY_BY_DEFAULT,
 )
 
 
@@ -355,6 +356,7 @@ class GenericSpecimen:
             self._load_landmarks(lm_cfg)
             load_rows.append(("markups", "-", "-", "loaded" if self.markups_node else "skipped", self.markups_out_path))
 
+        logger.info(f"[GenericSpecimen] loaded {self.label}: {len(load_rows)} item(s) -> {self.out_dir}")
         self._print_table(f"loaded {self.label}", ["item", "type", "role", "status", "path"], load_rows)
 
         self._customize_workplace()
@@ -492,8 +494,8 @@ class GenericSpecimen:
         """Apply cfg.workspace's crosshair mode/behavior/thickness (falling
         back to this module's long-standing defaults - ShowBasic /
         OffsetJumpSlice / Fine - so an absent 'workspace' section changes
-        nothing), plus the purely opt-in ruler (per slice view) and 3D
-        orientation-marker settings."""
+        nothing), plus the purely opt-in ruler, 3D/2D orientation-marker,
+        and L/R view convention settings."""
         ws_cfg = self.cfg.workspace
 
         crosshair = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
@@ -511,8 +513,9 @@ class GenericSpecimen:
             else:
                 logger.warning(f"[GenericSpecimen] unknown crosshair thickness '{thickness_name}', skipping")
 
+        layoutManager = slicer.app.layoutManager()
+
         if ws_cfg.ruler_type:
-            layoutManager = slicer.app.layoutManager()
             for color in ("Red", "Yellow", "Green"):
                 sliceWidget = layoutManager.sliceWidget(color)
                 if sliceWidget is None:
@@ -522,31 +525,76 @@ class GenericSpecimen:
                 if ruler_value is not None:
                     sliceNode.SetRulerType(ruler_value)
 
-        if ws_cfg.orientation_marker_type or ws_cfg.orientation_marker_size:
-            layoutManager = slicer.app.layoutManager()
+        if ws_cfg.orientation_marker_3d_type or ws_cfg.orientation_marker_3d_size:
             threeDWidget = layoutManager.threeDWidget(0)
             if threeDWidget:
                 viewNode = threeDWidget.threeDView().mrmlViewNode()
                 if viewNode:
-                    self._apply_orientation_marker(viewNode)
+                    self._apply_orientation_marker(viewNode, ws_cfg.orientation_marker_3d_type, ws_cfg.orientation_marker_3d_size)
 
-    def _apply_orientation_marker(self, viewNode, default_type=None, default_size=None):
-        """Set a 3D view node's orientation-marker type/size from
-        cfg.workspace (short names, e.g. "Axes"/"Large" - this method adds
-        the OrientationMarkerType/OrientationMarkerSize prefix itself),
-        falling back to default_type/default_size (full constant names,
-        e.g. "OrientationMarkerTypeAxes") when a field is unset - used by
-        _start_volume_rendering(), which always wants SOME marker even if
-        cfg.workspace doesn't specify one."""
-        ws_cfg = self.cfg.workspace
-        type_name = ("OrientationMarkerType" + ws_cfg.orientation_marker_type) if ws_cfg.orientation_marker_type else default_type
-        if type_name:
-            v = self._resolve_enum(viewNode, type_name)
+        if ws_cfg.orientation_marker_2d_type or ws_cfg.orientation_marker_2d_size:
+            for color in ("Red", "Yellow", "Green"):
+                sliceWidget = layoutManager.sliceWidget(color)
+                if sliceWidget is None:
+                    continue
+                sliceNode = sliceWidget.mrmlSliceNode()
+                self._apply_orientation_marker(sliceNode, ws_cfg.orientation_marker_2d_type, ws_cfg.orientation_marker_2d_size)
+
+        self._apply_view_convention(ws_cfg.view_convention)
+
+    def _apply_view_convention(self, convention):
+        """Flip the default Axial/Coronal slice-orientation presets between
+        Slicer's own default ("radiological": patient's right shown on
+        screen-left) and "neurological" (patient's right on screen-right) -
+        the exact technique from Slicer's own documented script ("Change
+        default slice view orientation", slicer.readthedocs.io/en/latest/
+        developer_guide/script_repository.html). Sagittal is left untouched
+        by design: a sagittal slice has no left/right ambiguity to flip.
+        No-op if convention is unset."""
+        if not convention:
+            return
+        axial = vtk.vtkMatrix3x3()      # identity - Slicer's own radiological default
+        coronal = vtk.vtkMatrix3x3()    # identity unless flipped below
+        if convention == "neurological":
+            coronal.SetElement(1, 1, 0)
+            coronal.SetElement(1, 2, -1)
+            coronal.SetElement(2, 1, 1)
+            coronal.SetElement(2, 2, 0)
+        elif convention != "radiological":
+            logger.warning(f"[GenericSpecimen] unknown view_convention '{convention}' (expected 'radiological' or 'neurological'), skipping")
+            return
+
+        sliceNodes = list(slicer.util.getNodesByClass("vtkMRMLSliceNode") or [])
+        defaultNode = slicer.mrmlScene.GetDefaultNodeByClass("vtkMRMLSliceNode")
+        if defaultNode:
+            sliceNodes.append(defaultNode)
+        for sliceNode in sliceNodes:
+            orientationPresetName = sliceNode.GetOrientation()
+            sliceNode.RemoveSliceOrientationPreset("Axial")
+            sliceNode.AddSliceOrientationPreset("Axial", axial)
+            sliceNode.RemoveSliceOrientationPreset("Coronal")
+            sliceNode.AddSliceOrientationPreset("Coronal", coronal)
+            sliceNode.SetOrientation(orientationPresetName)
+
+    def _apply_orientation_marker(self, viewNode, type_name=None, size_name=None, default_type=None, default_size=None):
+        """Set a view node's orientation-marker type/size - works for BOTH
+        the 3D view and a slice (2D) view, since vtkMRMLSliceNode inherits
+        this property from the same vtkMRMLAbstractViewNode base class the
+        3D view node uses. type_name/size_name are SHORT names (e.g.
+        "Axes"/"Large") - this method adds the OrientationMarkerType/
+        OrientationMarkerSize prefix itself. default_type/default_size
+        (full constant names, e.g. "OrientationMarkerTypeAxes") are used
+        only when type_name/size_name are unset - only
+        _start_volume_rendering() passes defaults (it always wants SOME 3D
+        marker); everywhere else, unset just means leave alone."""
+        full_type = ("OrientationMarkerType" + type_name) if type_name else default_type
+        if full_type:
+            v = self._resolve_enum(viewNode, full_type)
             if v is not None:
                 viewNode.SetOrientationMarkerType(v)
-        size_name = ("OrientationMarkerSize" + ws_cfg.orientation_marker_size) if ws_cfg.orientation_marker_size else default_size
-        if size_name:
-            v = self._resolve_enum(viewNode, size_name)
+        full_size = ("OrientationMarkerSize" + size_name) if size_name else default_size
+        if full_size:
+            v = self._resolve_enum(viewNode, full_size)
             if v is not None:
                 viewNode.SetOrientationMarkerSize(v)
 
@@ -619,7 +667,9 @@ class GenericSpecimen:
             threeDView = threeDWidget.threeDView()
             viewNode = threeDView.mrmlViewNode()
             if viewNode:
-                self._apply_orientation_marker(viewNode, default_type="OrientationMarkerTypeAxes", default_size="OrientationMarkerSizeLarge")
+                ws_cfg = self.cfg.workspace
+                self._apply_orientation_marker(viewNode, ws_cfg.orientation_marker_3d_type, ws_cfg.orientation_marker_3d_size,
+                                                default_type="OrientationMarkerTypeAxes", default_size="OrientationMarkerSizeLarge")
                 viewNode.SetBoxVisible(False)
             threeDView.resetFocalPoint()
             threeDView.resetCamera()
@@ -751,32 +801,50 @@ class GenericSpecimen:
 
 
     def save(self):
-        """Write every 'writeable' node this specimen owns (segmentation, markups, any image explicitly tracked) back to its resolved path, creating the output folder(s) if needed. Prints an itemized table of what was actually written (and what was skipped, with why)."""
+        """Write this specimen's writeable nodes back to disk. Segmentation and markups are always attempted. Images (volumes/labelmaps) are skipped entirely - not written, not even logged - if IMAGES_READ_ONLY_BY_DEFAULT is True and the node hasn't actually changed since it was loaded (see _node_has_changed()); this is the common case, since most images in a study are read-only source data. Logs one short INFO summary line (item count + output folder), plus the full itemized detail at DEBUG level."""
         if not os.path.isdir(self.out_dir):
             os.makedirs(self.out_dir, exist_ok=True)
         save_rows = []
         for logical_name, path in self.writeable.items():
             item = logical_name.strip("_") or logical_name
-            out_dir = os.path.dirname(path)
-            if out_dir and not os.path.isdir(out_dir):
-                os.makedirs(out_dir, exist_ok=True)
+            is_volume = logical_name not in ("__segmentation__", "__markups__")
             node = (self.segmentation_node if logical_name == "__segmentation__" else
                     self.markups_node if logical_name == "__markups__" else
                     self.node_dict.get(logical_name))
             if node is None:
                 save_rows.append((item, "skipped (no node)", path))
                 continue
+
+            status = "written"
+            if is_volume and IMAGES_READ_ONLY_BY_DEFAULT:
+                if not self._node_has_changed(node):
+                    continue  # read-only and unchanged: skip silently, don't even log it
+                status = "changed"
+
+            out_dir = os.path.dirname(path)
+            if out_dir and not os.path.isdir(out_dir):
+                os.makedirs(out_dir, exist_ok=True)
             storage = node.CreateDefaultStorageNode()
             storage.SetFileName(path)
             storage.WriteData(node)
-            save_rows.append((item, "written", path))
+            save_rows.append((item, status, path))
+
+        logger.info(f"[GenericSpecimen] saved {self.label}: {len(save_rows)} item(s) -> {self.out_dir}")
         self._print_table(f"saved {self.label} -> {self.out_dir}", ["item", "status", "path"], save_rows)
 
+    def _node_has_changed(self, node):
+        """True if a storable node has been modified since it was last read/written, via the standard MRML GetModifiedSinceRead() check. Defensive: if the check itself isn't available/fails on your Slicer version, assume changed - safer to over-save than to silently lose an edit."""
+        try:
+            return bool(node.GetModifiedSinceRead())
+        except Exception as e:
+            logger.warning(f"[GenericSpecimen] could not check modified-state for '{node.GetName() if hasattr(node, 'GetName') else node}', assuming changed: {e}")
+            return True
+
     def _print_table(self, title, headers, rows):
-        """Print a simple, aligned ASCII table to the terminal - used for the itemized load/save summaries. Pure stdlib, no external table library needed."""
-        logger.info(f"[GenericSpecimen] {title}:")
+        """Print a simple, aligned ASCII table - the itemized load/save detail, at DEBUG level (see load()/save() for the short INFO-level summary line). Pure stdlib, no external table library needed."""
+        logger.debug(f"[GenericSpecimen] {title}:")
         if not rows:
-            logger.info("  (nothing)")
+            logger.debug("  (nothing)")
             return
         widths = [len(h) for h in headers]
         for row in rows:
@@ -786,10 +854,10 @@ class GenericSpecimen:
         def fmt_row(cells):
             return "  ".join(str(c).ljust(w) for c, w in zip(cells, widths))
 
-        logger.info("  " + fmt_row(headers))
-        logger.info("  " + "-" * (sum(widths) + 2 * (len(widths) - 1)))
+        logger.debug("  " + fmt_row(headers))
+        logger.debug("  " + "-" * (sum(widths) + 2 * (len(widths) - 1)))
         for row in rows:
-            logger.info("  " + fmt_row(row))
+            logger.debug("  " + fmt_row(row))
 
     def close(self):
         """Remove every Slicer node this specimen created (images, segmentation, markups, volume rendering + its ROI) - called when switching to a different specimen or when the scene is closing."""
@@ -1052,6 +1120,37 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         c.setDefaultButton(qt.QMessageBox.Ok)
         c.exec_()
 
+    def show_key_value_dialog(self, title, rows):
+        """Show a small, nicely-formatted OK-only dialog: a grid of bold-label/value rows, built from real widgets instead of one plain QMessageBox text blob - used for the Save confirmations, where a flat wall of text was hard to scan. `rows` is a list of (label, value) pairs."""
+        dlg = qt.QDialog(slicer.util.mainWindow())
+        dlg.setWindowTitle(title)
+        layout = qt.QVBoxLayout(dlg)
+
+        titleLabel = qt.QLabel(f"<h3>{title}</h3>")
+        layout.addWidget(titleLabel)
+
+        grid = qt.QGridLayout()
+        grid.setColumnStretch(1, 1)
+        grid.setHorizontalSpacing(16)
+        for i, (label, value) in enumerate(rows):
+            lbl = qt.QLabel(f"<b>{label}</b>")
+            val = qt.QLabel(str(value))
+            val.setWordWrap(True)
+            val.setTextInteractionFlags(qt.Qt.TextSelectableByMouse)
+            grid.addWidget(lbl, i, 0, qt.Qt.AlignTop)
+            grid.addWidget(val, i, 1)
+        layout.addLayout(grid)
+
+        btnRow = qt.QHBoxLayout()
+        btnRow.addStretch(1)
+        okBtn = qt.QPushButton("OK")
+        okBtn.setDefault(True)
+        okBtn.connect('clicked(bool)', lambda checked=False: dlg.accept())
+        btnRow.addWidget(okBtn)
+        layout.addLayout(btnRow)
+
+        dlg.exec_()
+
     def load_specimen(self, key):
         """Load the specimen for `key` and make it the active one - refuses (with an info popup) if a specimen is already active."""
         target = self.specimens.get(key)
@@ -1087,8 +1186,9 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         sp = self.active_specimen
         sp.save()
         if inform_user:
-            key_lines = "\n".join(f"  {col}: {val}" for col, val in zip(self.cfg.key_columns, sp.key_values))
-            self.info(f"Specimen saved.\n\n{key_lines}\n\n  folder: {sp.out_dir}")
+            rows = list(zip(self.cfg.key_columns, sp.key_values))
+            rows.append(("folder", sp.out_dir))
+            self.show_key_value_dialog("Specimen saved", rows)
 
     def save_db(self, inform_user=True):
         """Write the live database table back to its CSV file; optionally show a confirmation popup."""
@@ -1097,7 +1197,7 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         storage.SetFileName(db_path)
         storage.WriteData(self.dbTable)
         if inform_user:
-            self.info(f"Database CSV saved.\n\n  path: {db_path}")
+            self.show_key_value_dialog("Database saved", [("path", db_path)])
 
     @property
     def hasActiveSpecimen(self):

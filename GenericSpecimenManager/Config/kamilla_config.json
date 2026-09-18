@@ -125,6 +125,16 @@
       "offset": 300.0
     }
   ],
+  "workspace": {
+    "crosshair_mode": "ShowBasic",
+    "crosshair_behavior": "OffsetJumpSlice",
+    "crosshair_thickness": "Fine",
+    "ruler_type": "Thin",
+    "orientation_marker_3d_type": "Human",
+    "orientation_marker_3d_size": "Medium",
+    "orientation_marker_2d_type": "Axes",
+    "orientation_marker_2d_size": "Medium"
+  },
   "batch_export": {
     "enabled": true,
     "export_segments": true,

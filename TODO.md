@@ -8,6 +8,9 @@
 - [x] Volume rendering column width adjust
 - [x] Slice rotation config (Red/Yellow/Green in-plane rotation)
 - [x] Workspace tab (window/level, slice rotation, crosshair, ruler, orientation marker)
+- [x] ~~_Colored logging_~~ [2026-09-18]
+- [x] ~~_Update README.md_~~ [2026-09-18]
+- [x] ~~_Radiologist / Neurologist view convention_~~ [2026-09-18]
 
 ## Dropped
 
@@ -16,15 +19,12 @@
 
 ## Open
 
-- [ ] Colored logging
-- [ ] Update README.md
-
-* [ ] **Examples/ folder: real configs + README**
+- [ ] **Examples/ folder: real configs + README**
 
   - one small, real config.json per example species (pig/rabbit/deer), matching what's already used in production
   - Examples/README.md explaining each one, and how to adapt for a new species
 
-* [ ] **Dataset-prep example script(s)** - the missing link before Examples/ is actually useful: a
+- [ ] **Dataset-prep example script(s)** - the missing link before Examples/ is actually useful: a
       script that turns raw scan data into what this module consumes (a `database.csv` + `preseg.csv`
       pair, with files organized/renamed as needed). Needs two input modes:
 
@@ -36,8 +36,8 @@
     check (dimensions, orientation, spacing) is needed before trusting a file
   - Should be runnable standalone (no Slicer import needed) - it's a data-prep step, not a module feature
 
-* [ ] Extension packaging (`.s4ext`) so it's installable via Extension Manager, not just git clone
-* [ ] Screenshot(s)/short demo in the main README
-* [ ] Verify the curated Slicer enum lists (crosshair mode/behavior, ruler type, orientation
+- [ ] Extension packaging (`.s4ext`) so it's installable via Extension Manager, not just git clone
+- [ ] Screenshot(s)/short demo in the main README
+- [ ] Verify the curated Slicer enum lists (crosshair mode/behavior, ruler type, orientation
       marker) against a couple of different Slicer versions - they're editable-but-curated
       guesses, not confirmed

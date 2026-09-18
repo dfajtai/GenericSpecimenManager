@@ -67,7 +67,9 @@
 <li>Everything here is applied once, per specimen, to the 3D Slicer <i>workspace</i> itself - not to any data.</li>
 <li><b>Window/level</b> - blanket min/max for every loaded volume. <b>Slice rotation</b> - in-plane rotation (degrees) for Red/Yellow/Green, same as the Reformat module's slider; leave a view's field empty to leave it alone.</li>
 <li><b>Crosshair</b> - Mode/Behavior/Thickness dropdowns (editable - type the exact Slicer/VTK constant name if yours isn't listed). Leave at <code>(unset)</code> to keep this module's usual default (ShowBasic / OffsetJumpSlice / Fine).</li>
-<li><b>Ruler / 3D orientation marker</b> - both purely opt-in (<code>(unset)</code> = leave alone). Volume rendering always shows an orientation marker (Axes/Large by default) regardless, unless overridden here.</li>
+<li><b>Ruler</b> - adds a scale ruler to every slice view. <code>(unset)</code> = leave alone.</li>
+<li><b>3D marker / 2D marker</b> - the orientation-marker widget (Axes/Cube/Human) shown in the 3D view and/or every slice view - both use the same underlying property, configured independently. Volume rendering always shows a 3D marker (Axes/Large by default) regardless, unless overridden here.</li>
+<li><b>View convention</b> - Radiological (Slicer's own default: patient's right on screen-left) or Neurological (patient's right on screen-right). Only affects Axial/Coronal - Sagittal has no left/right to flip.</li>
 </ul>
 
 <h2>&#128394; Segment editor</h2>
