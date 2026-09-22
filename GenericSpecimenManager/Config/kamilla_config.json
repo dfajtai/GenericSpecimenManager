@@ -139,9 +139,10 @@
     "enabled": true,
     "export_segments": true,
     "export_markups": false,
-    "per_batch_subfolder": false,
+    "per_batch_operation": true,
     "compute_stats": true,
     "reference_image": "native",
+    "output_dir": "/home/fajtai/New Folder/",
     "stats_reference_images": [
       "native",
       "water",

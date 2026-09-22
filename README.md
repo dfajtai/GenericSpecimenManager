@@ -146,7 +146,7 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
   "batch_export": {
     "enabled": true, "export_segments": true, "export_markups": true,
     "reference_image": "mask", "segments_filter": ["liver", "tumor"],
-    "output_dir": "results", "per_batch_subfolder": true   // only with batch_mode enabled
+    "output_dir": "results", "per_batch_operation": true   // only needs batch_mode.column set
   },
 
   "segment_editor": {
@@ -194,9 +194,10 @@ workspace/tools around it behave:
 **General** - Study dir first (set it before browsing the two CSVs below - they
 display relative to whatever it already contains); key/table/output-dir
 columns; "Show CSV columns..." (both CSVs' headers + the columns common to
-both = likely key-column candidates); **Batch export** fields at the bottom
-(enabled, export_segments/markups, reference_image, segments_filter,
-output_dir, per_batch_subfolder).
+both = likely key-column candidates); **Batch export** group box at the bottom
+(enabled, export_segments/markups/compute_stats, reference_image,
+segments_filter, output_dir, per_batch_operation, plus the
+compute_stats-only fields).
 
 **Images** - quick-add table (column name + Add + Labelmap checkbox); the main
 table (name, csv_column, pattern/strip, type, role, required, **Preset**
@@ -437,11 +438,13 @@ study could lose, or misattribute, the open specimen's unsaved work.
 
 ## Batch mode & batch export
 
-With `batch_mode.enabled`, the GUI shows a batch-select combo (`cmbBatch`)
-after Initialize Study, populated with the unique values of
-`batch_mode.column` ("(all)" plus every value). Switching re-filters the
-table. **Switching is blocked while a specimen is active** - it must be
-closed first, or export/save could get attributed to the wrong row.
+With `batch_mode.enabled`, the GUI shows a batch-select combo (`cmbBatch`,
+labeled "Filter subjects by batches" in the Config Editor) after Initialize
+Study, populated with the unique values of `batch_mode.column` ("(all)"
+plus every value). Switching re-filters the table. **Switching is blocked
+while a specimen is active** - it must be closed first, or export/save
+could get attributed to the wrong row. This toggle is a **main-module
+viewing convenience only** - it has no effect on Batch Export below.
 
 A single **Batch Export** button runs
 [`BatchProcessor`](GenericSpecimenManager/Resources/BatchProcessor.py)
@@ -462,22 +465,28 @@ one pass, any combination of:
   row per segment (an `image` column joins the key/segment columns), so
   multi-sequence studies (e.g. native/arterial/portal-phase MR) get one
   stats row per phase per segment. All sample images must share the
-  segmentation's geometry. Every specimen's rows are concatenated into
-  **one combined CSV** (`stats_output_path`, plain and study_dir-relative
-  unless absolute, `{date}` substituted if present - defaults to
-  `report.csv`), ordered by key columns, then image, then segment name.
-  `stats_metrics` is comma-separated in the Config Editor; leave it unset
-  to use
+  segmentation's geometry. `stats_metrics` is comma-separated in the
+  Config Editor; leave it unset to use
   [`Definitions.DEFAULT_STATS_METRICS`](GenericSpecimenManager/Resources/Definitions.py).
+
+`output_dir` is a plain literal folder (study_dir-relative unless
+absolute - **not** a per-specimen `{ID}`-style pattern; that's what
+`output_dir_pattern` is for), optionally containing a literal `{batch}`
+placeholder. **`per_batch_operation`** splits EVERYTHING this run
+produces - segment files, markup files, *and* the stats CSV(s) - by
+`batch_mode.column`'s value: one `output_dir/<batch value>/...` subfolder
+per batch for files, one CSV per batch for statistics (`{batch}`
+substituted in `stats_output_path` if present, or auto-inserted before the
+extension otherwise, so per-batch files never collide). This only needs
+`batch_mode.column` to be **set** - it's deliberately independent of
+`batch_mode.enabled`, which is purely the interactive filter combo above.
 
 Each specimen is loaded through the **lean**
 `GenericSpecimen.load_for_batch()` path - only the segmentation plus at
 most one reference/"master" volume (never the full configured image set),
 skipping workspace settings, volume rendering, and Segment Editor
 activation entirely, since none of that is needed for a headless batch
-run. Per-batch export: with `batch_export.per_batch_subfolder: true`,
-exports go into `<out_dir>/<batch_value>/...` folders instead of one flat
-folder.
+run.
 
 ## Logging & feedback
 

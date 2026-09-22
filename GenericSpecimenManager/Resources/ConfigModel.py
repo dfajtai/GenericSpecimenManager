@@ -321,18 +321,13 @@ class BatchExportConfig:
     """cfg.batch_export - what BatchProcessor (GenericSpecimenEngine.py) does
     with every 'done' specimen, in ONE pass: export segment labelmaps to
     files, export markups, and/or compute custom per-segment statistics
-    into one combined CSV - any combination. Whichever of these is turned
+    into a combined CSV - any combination. Whichever of these is turned
     on decides what gets loaded per specimen (a lean load, skipping
     workspace/volume-rendering/Segment-Editor setup - see
     GenericSpecimen.load_for_batch())."""
     enabled: bool = False
     export_segments: bool = False
     export_markups: bool = False
-    reference_image: Optional[str] = None
-    segments_filter: Optional[List[str]] = None
-    output_dir: Optional[str] = None
-    per_batch_subfolder: bool = False        # if batch_mode is on: export into out_dir/<batch>/... instead of flat
-
     # Custom per-segment statistics (volume/min/max/mean/median/std/
     # percentile_<N>), computed straight from Slicer's own per-segment
     # labelmap export + slicer.util.arrayFromVolume() - not from any
@@ -340,6 +335,21 @@ class BatchExportConfig:
     # correctly (each segment's mask is independently exported, not
     # decoded from one shared multi-label array).
     compute_stats: bool = False
+    reference_image: Optional[str] = None
+    segments_filter: Optional[List[str]] = None
+    # Plain literal folder, study_dir-relative unless absolute. May
+    # contain a literal "{batch}" placeholder (substituted with the
+    # specimen's batch_mode.column value) - only meaningful together with
+    # per_batch_operation below.
+    output_dir: Optional[str] = None
+    # Splits EVERYTHING this run produces - segment files, markups files,
+    # AND the stats CSV - by batch_mode.column's value: one subfolder
+    # (output_dir/<batch value>/...) per batch for the files, one CSV per
+    # batch for statistics. Only needs batch_mode.column to be set - does
+    # NOT depend on batch_mode.enabled (that flag only controls the
+    # interactive specimen-table filter combo in the main GUI, a
+    # completely separate, independent concern from this).
+    per_batch_operation: bool = False
     # One or more Images-tab names to sample intensities from - one stats
     # row per (specimen, sample image, segment). Falls back to
     # `reference_image` above, then segmentation.reference_image, wrapped
@@ -351,9 +361,12 @@ class BatchExportConfig:
     # mean/median/std or percentile_<N> (e.g. percentile_25). Unset/empty
     # falls back to Definitions.DEFAULT_STATS_METRICS.
     stats_metrics: Optional[List[str]] = None
-    # Plain path for the combined CSV - study_dir-relative if not
-    # absolute (no {study_dir} placeholder needed). "{datetime}", "{date}" 
-    # or "{time}" is substituted if present. Defaults to "report.csv".
+    # Plain path/filename for the stats CSV - study_dir-relative if not
+    # absolute (no {study_dir} placeholder needed). Defaults to
+    # "report.csv". May contain "{batch}", substituted per batch value
+    # when per_batch_operation is True (and auto-inserted before the
+    # extension if you leave it out, so per-batch files never collide) -
+    # plus whatever date/time placeholders your own build supports.
     stats_output_path: Optional[str] = None
 
     @classmethod
@@ -364,9 +377,13 @@ class BatchExportConfig:
 
 @dataclass
 class BatchModeConfig:
-    """Optional filtering of specimens by a database.csv column (e.g. "batch").
-    When enabled, the GUI shows a batch-select combo box after Initialize
-    Study, re-filtering the specimen table to the selected batch value."""
+    """Optional filtering of specimens by a database.csv column (e.g. "batch"),
+    for the MAIN MODULE'S interactive specimen table only. When enabled,
+    the GUI shows a batch-select combo box after Initialize Study,
+    re-filtering the specimen table to the selected batch value. This is
+    purely a viewing convenience - batch_export.per_batch_operation (which
+    groups export/stats output by batch) only needs `column` below to be
+    set, independent of `enabled` here."""
     enabled: bool = False
     column: Optional[str] = None             # database.csv column to group/filter by
 
