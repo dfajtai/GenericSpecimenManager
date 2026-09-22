@@ -11,6 +11,8 @@
 - [x] ~~_Colored logging_~~ [2026-09-18]
 - [x] ~~_Update README.md_~~ [2026-09-18]
 - [x] ~~_Radiologist / Neurologist view convention_~~ [2026-09-18]
+- [x] ~~_Batch mode custom 'segment statistics' reporting to a CSV file._~~ [2026-09-22]
+- [x] ~~_Batch export (export segmentations to masks - segment by segment, handling overlap.) fixes._~~ [2026-09-22]
 
 ## Dropped
 
@@ -19,12 +21,14 @@
 
 ## Open
 
-- [ ] **Examples/ folder: real configs + README**
+- [ ] Batch export -> Per-batch subfolder ON + Batch export output dir (option) defined as {KEY_x}. -> wrong substituition. Enable Batch mode did not affect the export either... So... make this more didactic/coherent for the user: rename "Enable batch mode" to "Filter subject by batches". Then rework Batch export block. Maybe put Batch Export inside a group box, move "..per-segment statistics" checkbox after "Export markups", suggest referecne image name from loaded images, then... Output dir... is a total mess with Per-batch subfolder too... and stats too. Maybe add a per-batch OPERATION (per-batch or all subject). This will affect the output of segment masks, markups and the stats csv paths too.
+
+* [ ] **Examples/ folder: real configs + README**
 
   - one small, real config.json per example species (pig/rabbit/deer), matching what's already used in production
   - Examples/README.md explaining each one, and how to adapt for a new species
 
-- [ ] **Dataset-prep example script(s)** - the missing link before Examples/ is actually useful: a
+* [ ] **Dataset-prep example script(s)** - the missing link before Examples/ is actually useful: a
       script that turns raw scan data into what this module consumes (a `database.csv` + `preseg.csv`
       pair, with files organized/renamed as needed). Needs two input modes:
 
@@ -36,8 +40,8 @@
     check (dimensions, orientation, spacing) is needed before trusting a file
   - Should be runnable standalone (no Slicer import needed) - it's a data-prep step, not a module feature
 
-- [ ] Extension packaging (`.s4ext`) so it's installable via Extension Manager, not just git clone
-- [ ] Screenshot(s)/short demo in the main README
-- [ ] Verify the curated Slicer enum lists (crosshair mode/behavior, ruler type, orientation
+* [ ] Extension packaging (`.s4ext`) so it's installable via Extension Manager, not just git clone
+* [ ] Screenshot(s)/short demo in the main README
+* [ ] Verify the curated Slicer enum lists (crosshair mode/behavior, ruler type, orientation
       marker) against a couple of different Slicer versions - they're editable-but-curated
       guesses, not confirmed

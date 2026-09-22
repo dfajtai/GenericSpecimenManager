@@ -140,7 +140,29 @@
     "export_segments": true,
     "export_markups": false,
     "per_batch_subfolder": false,
-    "reference_image": "native"
+    "compute_stats": true,
+    "reference_image": "native",
+    "stats_reference_images": [
+      "native",
+      "water",
+      "arterial",
+      "portal",
+      "equlibrium",
+      "last_image"
+    ],
+    "stats_metrics": [
+      "volume",
+      "min",
+      "max",
+      "mean",
+      "median",
+      "std",
+      "percentile_5",
+      "percentile_25",
+      "percentile_75",
+      "percentile_95"
+    ],
+    "stats_output_path": "reports/{date}/report-{time}.csv"
   },
   "segment_editor": {
     "overwrite_mode": "none",

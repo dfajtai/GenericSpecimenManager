@@ -24,7 +24,8 @@ GenericSpecimenManager/                          <- repo root (this README, top 
     │   ├── DeerSegmentor.py / PigChunker.py / RabbitVertCount.py
     ├── Resources/
     │   ├── ConfigModel.py                        <- dataclasses: StudyConfig and the rest of the schema
-    │   ├── GenericSpecimenEngine.py               <- the actual logic (Logic, GenericSpecimen, Widget base, batch export)
+    │   ├── GenericSpecimenEngine.py               <- the actual logic (Logic, GenericSpecimen, Widget base)
+    │   ├── BatchProcessor.py                     <- batch export/statistics, run against every 'done' specimen
     │   ├── ConfigEditor.py                       <- the dialog behind the "Config Editor..." button
     │   ├── Definitions.py                        <- every hardcoded toggle/curated choice list, in ONE place
     │   ├── LoggingSetup.py                       <- shared logger, optional log-to-file
@@ -48,7 +49,8 @@ Each file's responsibility:
 |---|---|
 | [`GenericSpecimenManager.py`](GenericSpecimenManager/GenericSpecimenManager.py) | Slicer module registration (title, icon, `CONFIG_PATH`) - ~60 lines, no business logic |
 | [`Resources/ConfigModel.py`](GenericSpecimenManager/Resources/ConfigModel.py) | the typed, attribute-accessed representation of `config.json` (dataclasses) |
-| [`Resources/GenericSpecimenEngine.py`](GenericSpecimenManager/Resources/GenericSpecimenEngine.py) | `Logic`, `GenericSpecimen` (load/save/close one specimen), the Widget base class, batch export |
+| [`Resources/GenericSpecimenEngine.py`](GenericSpecimenManager/Resources/GenericSpecimenEngine.py) | `Logic`, `GenericSpecimen` (load/save/close one specimen), the Widget base class |
+| [`Resources/BatchProcessor.py`](GenericSpecimenManager/Resources/BatchProcessor.py) | `BatchProcessor` - segment/markup export and/or custom statistics for every `done` specimen, one combined CSV |
 | [`Resources/ConfigEditor.py`](GenericSpecimenManager/Resources/ConfigEditor.py) | GUI for building/editing `config.json` without hand-writing JSON |
 | [`Resources/Definitions.py`](GenericSpecimenManager/Resources/Definitions.py) | every hardcoded toggle (e.g. `HIDE_HELP_AND_ACKNOWLEDGEMENT`) and curated dropdown-choice list, in one findable place |
 | [`Resources/LoggingSetup.py`](GenericSpecimenManager/Resources/LoggingSetup.py) | the shared `logger` every other file uses instead of `print()`, with an optional log-to-file toggle |
@@ -433,7 +435,7 @@ exceptions (JSON parse errors, an `initializeStudy` crash) still use
 Study, a Save/Discard/Cancel prompt appears first - re-initializing the
 study could lose, or misattribute, the open specimen's unsaved work.
 
-## Batch mode
+## Batch mode & batch export
 
 With `batch_mode.enabled`, the GUI shows a batch-select combo (`cmbBatch`)
 after Initialize Study, populated with the unique values of
@@ -441,8 +443,41 @@ after Initialize Study, populated with the unique values of
 table. **Switching is blocked while a specimen is active** - it must be
 closed first, or export/save could get attributed to the wrong row.
 
-Per-batch export: with `batch_export.per_batch_subfolder: true`, exports go
-into `<out_dir>/<batch_value>/...` folders instead of one flat folder.
+A single **Batch Export** button runs
+[`BatchProcessor`](GenericSpecimenManager/Resources/BatchProcessor.py)
+against every `done` specimen, driven entirely by `cfg.batch_export`. In
+one pass, any combination of:
+
+- **export_segments** - each segment exported to its own labelmap file via
+  Slicer's native `ExportSegmentsToLabelmapNode` (handles overlapping
+  segments correctly - each segment gets its own independently-exported
+  mask, never a shared multi-label array to misinterpret)
+- **export_markups** - the markups file
+- **compute_stats** - custom per-segment statistics (volume, min, max,
+  mean, median, std, and/or `percentile_<N>`), computed from the same
+  per-segment labelmap export + `slicer.util.arrayFromVolume()` + plain
+  numpy (no pandas, no third-party segmentation-file reader).
+  `stats_reference_images` (comma-separated in the Config Editor, or "Use
+  all loaded images") is one or more sample volumes - each gets its OWN
+  row per segment (an `image` column joins the key/segment columns), so
+  multi-sequence studies (e.g. native/arterial/portal-phase MR) get one
+  stats row per phase per segment. All sample images must share the
+  segmentation's geometry. Every specimen's rows are concatenated into
+  **one combined CSV** (`stats_output_path`, plain and study_dir-relative
+  unless absolute, `{date}` substituted if present - defaults to
+  `report.csv`), ordered by key columns, then image, then segment name.
+  `stats_metrics` is comma-separated in the Config Editor; leave it unset
+  to use
+  [`Definitions.DEFAULT_STATS_METRICS`](GenericSpecimenManager/Resources/Definitions.py).
+
+Each specimen is loaded through the **lean**
+`GenericSpecimen.load_for_batch()` path - only the segmentation plus at
+most one reference/"master" volume (never the full configured image set),
+skipping workspace settings, volume rendering, and Segment Editor
+activation entirely, since none of that is needed for a headless batch
+run. Per-batch export: with `batch_export.per_batch_subfolder: true`,
+exports go into `<out_dir>/<batch_value>/...` folders instead of one flat
+folder.
 
 ## Logging & feedback
 

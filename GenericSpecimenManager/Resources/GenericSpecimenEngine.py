@@ -28,11 +28,13 @@ from Resources.ConfigModel import (
     merge_image_overrides, merge_segment_overrides,
 )
 from Resources.ConfigEditor import ConfigEditorDialog
+from Resources.BatchProcessor import BatchProcessor, batch_exporter
 from Resources.LoggingSetup import logger
 from Resources.Definitions import (
     HIDE_RELOAD_AND_TEST as _DEFINITIONS_HIDE_RELOAD_AND_TEST,
     HIDE_HELP_AND_ACKNOWLEDGEMENT as _DEFINITIONS_HIDE_HELP_AND_ACKNOWLEDGEMENT,
     IMAGES_READ_ONLY_BY_DEFAULT,
+    DEFAULT_STATS_METRICS,
 )
 
 
@@ -251,6 +253,47 @@ class GenericSpecimen:
         except Exception:
             logger.warning(f"[GenericSpecimen] unable to load segment image '{path}', creating empty segment '{name}'")
             self._add_empty_segment(segmentation_node, name, reference_volume_node, color)
+
+    def load_for_batch(self, image_names=None):
+        """Lean load path for headless batch operations (BatchProcessor):
+        loads ONLY the segmentation (if configured, and only if its file
+        already exists - never builds a fresh empty one here, since batch
+        operations only ever run on 'done' specimens that should already
+        have one saved) and, if given, the SPECIFIC named images in
+        image_names - typically just one reference/"master" volume, not
+        the full configured image set. Unlike load(), this skips landmarks,
+        _customize_workplace() (crosshair/window-level/Four-Up layout),
+        volume rendering, and Segment Editor activation entirely - none of
+        that is needed for a headless export/stats run, and skipping it is
+        most of the speedup over load(). Every node loaded here is also
+        marked SetHideFromEditors(True) - they're headless/transient
+        (removed right after processing, never shown to the user), and
+        letting Subject Hierarchy track them is what causes a
+        'GetSubjectHierarchyNode: Invalid scene given' warning storm when
+        several get removed in a row via close()."""
+        wanted = set(image_names or [])
+        if wanted:
+            for raw_img_cfg in self._expand_image_entries():
+                img_cfg = self._resolve_image_cfg(raw_img_cfg)
+                if img_cfg.name not in wanted:
+                    continue
+                itype = img_cfg.type or "volume"
+                try:
+                    path = self.resolve_image_path(img_cfg)
+                    node = slicer.util.loadLabelVolume(path) if itype == "labelmap" else slicer.util.loadVolume(path)
+                    node.SetName(img_cfg.name)
+                except Exception as e:
+                    logger.warning(f"[GenericSpecimen] (batch) could not load image '{img_cfg.name}' for {self.label}: {e}")
+                    continue
+                node.SetHideFromEditors(True)
+                self.node_dict[img_cfg.name] = node
+                self.writeable[img_cfg.name] = path
+
+        seg_cfg = self.cfg.segmentation
+        if seg_cfg.enabled and os.path.exists(self.segmentation_out_path()):
+            self._load_segmentation(seg_cfg)
+            if self.segmentation_node is not None:
+                self.segmentation_node.SetHideFromEditors(True)
 
     def _load_segmentation(self, seg_cfg: SegmentationConfig):
         """Load this specimen's segmentation file if it already exists on disk, otherwise build a fresh vtkMRMLSegmentationNode from segmentation.segments[]."""
@@ -825,8 +868,11 @@ class GenericSpecimen:
             if out_dir and not os.path.isdir(out_dir):
                 os.makedirs(out_dir, exist_ok=True)
             storage = node.CreateDefaultStorageNode()
+            storage.SetHideFromEditors(True)
             storage.SetFileName(path)
             storage.WriteData(node)
+            if slicer.mrmlScene.IsNodePresent(storage):
+                slicer.mrmlScene.RemoveNode(storage)
             save_rows.append((item, status, path))
 
         logger.info(f"[GenericSpecimen] saved {self.label}: {len(save_rows)} item(s) -> {self.out_dir}")
@@ -860,30 +906,41 @@ class GenericSpecimen:
             logger.debug("  " + fmt_row(row))
 
     def close(self):
-        """Remove every Slicer node this specimen created (images, segmentation, markups, volume rendering + its ROI) - called when switching to a different specimen or when the scene is closing."""
+        """Remove every Slicer node this specimen created (images, segmentation, markups, volume rendering + its ROI) - called when switching to a different specimen or when the scene is closing. Wrapped in a BatchProcessState block (the standard Slicer technique for removing several nodes contiguously - see slicer.readthedocs.io's script repository) so observers like the Subject Hierarchy plugin defer their per-node bookkeeping until the whole removal is done, instead of reacting - sometimes with a harmless but noisy 'Invalid scene given' warning - to each node individually. Each node is also checked for a still-valid GetScene() right before removal - IsNodePresent() alone can say True while the node's own scene reference is already stale (i.e. it's effectively already detached), which is exactly what triggers that warning if we call RemoveNode on it anyway."""
         if slicer.mrmlScene.IsClosing():
             return
         logger.info(f"[GenericSpecimen] closing {self.label}")
-        for vr_node in self.volume_rendering_nodes:
-            if vr_node and slicer.mrmlScene.IsNodePresent(vr_node):
-                slicer.mrmlScene.RemoveNode(vr_node)
-        self.volume_rendering_nodes = []
-        for roi in self.volume_rendering_roi:
-            if roi and slicer.mrmlScene.IsNodePresent(roi):
-                slicer.mrmlScene.RemoveNode(roi)
-        self.volume_rendering_roi = []
-        all_nodes = list(self.node_dict.values())
-        if self.segmentation_node is not None and self.segmentation_node not in all_nodes:
-            all_nodes.append(self.segmentation_node)
-        for node in all_nodes:
-            try:
-                if node and slicer.mrmlScene.IsNodePresent(node):
-                    slicer.mrmlScene.RemoveNode(node)
-            except Exception:
-                pass
+        slicer.mrmlScene.StartState(slicer.mrmlScene.BatchProcessState)
+        try:
+            for vr_node in self.volume_rendering_nodes:
+                if vr_node and self._node_removable(vr_node):
+                    slicer.mrmlScene.RemoveNode(vr_node)
+            self.volume_rendering_nodes = []
+            for roi in self.volume_rendering_roi:
+                if roi and self._node_removable(roi):
+                    slicer.mrmlScene.RemoveNode(roi)
+            self.volume_rendering_roi = []
+            all_nodes = list(self.node_dict.values())
+            if self.segmentation_node is not None and self.segmentation_node not in all_nodes:
+                all_nodes.append(self.segmentation_node)
+            for node in all_nodes:
+                try:
+                    if node and self._node_removable(node):
+                        slicer.mrmlScene.RemoveNode(node)
+                except Exception:
+                    pass
+        finally:
+            slicer.mrmlScene.EndState(slicer.mrmlScene.BatchProcessState)
         self.node_dict = {}
         self.segmentation_node = None
         self.markups_node = None
+
+    def _node_removable(self, node):
+        """True if `node` is actually still safe to RemoveNode() - present in the scene AND its own GetScene() reference is still valid. A node can be IsNodePresent()==True yet already have a stale/None scene reference (e.g. after an earlier removal in the same batch touched something it was linked to) - calling RemoveNode on it anyway is exactly what triggers Subject Hierarchy's 'Invalid scene given' warning, so we just skip it: the node is already effectively gone."""
+        try:
+            return bool(slicer.mrmlScene.IsNodePresent(node)) and node.GetScene() is not None
+        except Exception:
+            return False
 
 
 # ---------------------------------------------------------------------------
@@ -1163,6 +1220,22 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         self.active_specimen = target
         return True
 
+    def load_specimen_for_batch(self, key, image_names=None):
+        """Lean equivalent of load_specimen() for headless batch operations
+        (BatchProcessor) - calls GenericSpecimen.load_for_batch() instead
+        of the full load(), so workspace/volume-rendering/Segment-Editor
+        setup is skipped entirely. Same active-specimen bookkeeping/guard
+        as load_specimen()."""
+        target = self.specimens.get(key)
+        if isinstance(self.active_specimen, GenericSpecimen):
+            self.info("A specimen has already been loaded.")
+            return False
+        if target is None:
+            raise ValueError(f"Specimen {key} not initialized")
+        target.load_for_batch(image_names=image_names)
+        self.active_specimen = target
+        return True
+
     def close_active_specimen(self, no_question=False):
         """Close the active specimen, asking for confirmation first unless no_question=True (used for scene-close/re-init flows where the caller already confirmed)."""
         if no_question:
@@ -1194,8 +1267,11 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         """Write the live database table back to its CSV file; optionally show a confirmation popup."""
         db_path = self.getParameterNode().GetParameter("DatabaseCSVPath")
         storage = self.dbTable.CreateDefaultStorageNode()
+        storage.SetHideFromEditors(True)
         storage.SetFileName(db_path)
         storage.WriteData(self.dbTable)
+        if slicer.mrmlScene.IsNodePresent(storage):
+            slicer.mrmlScene.RemoveNode(storage)
         if inform_user:
             self.show_key_value_dialog("Database saved", [("path", db_path)])
 
@@ -1712,71 +1788,3 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
     def onBtnBatchExport(self):
         """Run the standalone batch_exporter() against this widget's Logic."""
         batch_exporter(self.logic)
-
-
-# ---------------------------------------------------------------------------
-# Generic batch export
-# ---------------------------------------------------------------------------
-
-def batch_exporter(logic: GenericSpecimenManagerLogic):
-    """Export every 'done' specimen's segments/markups to disk, driven entirely by cfg.batch_export (+ cfg.batch_mode.column for optional per-batch subfolders). No GUI involved - callable standalone from the Python console with just a Logic instance."""
-    if logic.hasActiveSpecimen:
-        logger.warning("Please close the active specimen before running a batch export.")
-        return
-    cfg = logic.cfg
-    be_cfg = cfg.batch_export
-    if not be_cfg.enabled:
-        logger.warning("[batch_exporter] batch_export is not enabled in the config.")
-        return
-
-    logic.initializeStudy()
-    done_col = cfg.done_column
-    segments_filter = be_cfg.segments_filter
-    use_batch_subfolder = cfg.batch_mode.enabled and be_cfg.per_batch_subfolder
-
-    for key, specimen in logic.specimens.items():
-        if specimen.db_info.get(done_col) != "1":
-            continue
-
-        logic.load_specimen(key)
-
-        base_dir = be_cfg.output_dir if be_cfg.output_dir else None
-        if base_dir and not os.path.isabs(base_dir):
-            base_dir = os.path.join(logic.study_dir, base_dir)
-        out_dir = base_dir if base_dir else specimen.out_dir
-        if use_batch_subfolder:
-            out_dir = os.path.join(out_dir, str(specimen.batch_value() or "unknown"))
-        if not os.path.isdir(out_dir):
-            os.makedirs(out_dir, exist_ok=True)
-
-        if be_cfg.export_segments and specimen.segmentation_node is not None:
-            ref_name = be_cfg.reference_image or cfg.segmentation.reference_image
-            ref_node = specimen.node_dict.get(ref_name)
-            seg = specimen.segmentation_node.GetSegmentation()
-            for seg_id in list(seg.GetSegmentIDs()):
-                seg_name = seg.GetSegment(seg_id).GetName()
-                if segments_filter and seg_name not in segments_filter:
-                    continue
-                labelmap = slicer.vtkMRMLLabelMapVolumeNode()
-                slicer.mrmlScene.AddNode(labelmap)
-                ids = vtk.vtkStringArray()
-                ids.InsertNextValue(seg_id)
-                slicer.vtkSlicerSegmentationsModuleLogic.ExportSegmentsToLabelmapNode(
-                    specimen.segmentation_node, ids, labelmap, ref_node)
-                storage = labelmap.CreateDefaultStorageNode()
-                out_file = os.path.join(out_dir, f"{specimen.label}-{seg_name}.nii.gz")
-                storage.SetFileName(out_file)
-                storage.WriteData(labelmap)
-                logger.info(f"[batch_exporter] saved {out_file}")
-                slicer.mrmlScene.RemoveNode(storage)
-                slicer.mrmlScene.RemoveNode(labelmap)
-
-        if be_cfg.export_markups and specimen.markups_node is not None:
-            out_file = os.path.join(out_dir, f"{specimen.label}-markups.mrk.json")
-            storage = specimen.markups_node.CreateDefaultStorageNode()
-            storage.SetFileName(out_file)
-            storage.WriteData(specimen.markups_node)
-            logger.info(f"[batch_exporter] saved {out_file}")
-            slicer.mrmlScene.RemoveNode(storage)
-
-        logic.close_active_specimen(no_question=True)

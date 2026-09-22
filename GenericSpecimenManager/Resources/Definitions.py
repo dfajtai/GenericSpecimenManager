@@ -17,7 +17,6 @@ stays next to the handler setup it configures.
 HIDE_RELOAD_AND_TEST = False
 HIDE_HELP_AND_ACKNOWLEDGEMENT = True
 
-
 # ---- Specimen save behavior (GenericSpecimen) ----
 # When True (default), a loaded image (volume/labelmap) is only written back
 # to disk on save if it was actually modified since it was loaded/last
@@ -34,6 +33,14 @@ IMAGES_READ_ONLY_BY_DEFAULT = True
 # None of these lists need to be exhaustive or 100% exact - every combobox
 # built from one is editable, so a missing/wrong entry is just a typing
 # exercise for the person filling in the config, not a dead end.
+
+# ---- Batch export: default custom segment-statistics metrics ----
+# Comma-separated in the Config Editor; "percentile_<N>" is a plain metric
+# name here too, not a separate field - see BatchProcessor._compute_metric()
+# in GenericSpecimenEngine.py.
+DEFAULT_STATS_METRICS = ["volume", "min", "max", "mean", "median", "std",
+                          "percentile_5", "percentile_25", "percentile_75", "percentile_95"]
+
 
 ROLE_CHOICES = ["(none)", "background", "label", "foreground"]
 TYPE_CHOICES = ["volume", "labelmap"]

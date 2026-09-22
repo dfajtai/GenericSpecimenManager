@@ -6,88 +6,193 @@
   example_presets_template.html instead, which has a {{CONTENT}} placeholder.
 -->
 <style>
-  body { font-family: sans-serif; font-size: 13px; }
-  h2 { font-size: 15px; margin: 14px 0 4px 0; padding: 2px 6px;
-       background-color: #2c5f8a; color: white; border-radius: 3px; }
-  h2:first-child { margin-top: 0; }
-  ul { margin: 2px 0 10px 0; padding-left: 18px; }
-  li { margin-bottom: 4px; }
-  code { background-color: #eef2f6; color: #b3405a; padding: 1px 4px; border-radius: 3px; }
-  .note { color: #555; font-style: italic; }
-  table.merge { border-collapse: collapse; margin: 4px 0 10px 0; }
-  table.merge td { border: 1px solid #ccc; padding: 3px 8px; }
-  table.merge td.step { background-color: #eef2f6; font-weight: bold; text-align: center; }
+  body {
+    font-family: sans-serif;
+    font-size: 13px;
+  }
+
+  h2 {
+    font-size: 15px;
+    margin: 14px 0 4px 0;
+    padding: 2px 6px;
+    background-color: #2c5f8a;
+    color: white;
+    border-radius: 3px;
+  }
+
+  h2:first-child {
+    margin-top: 0;
+  }
+
+  ul {
+    margin: 2px 0 10px 0;
+    padding-left: 18px;
+  }
+
+  li {
+    margin-bottom: 4px;
+  }
+
+  code {
+    background-color: #eef2f6;
+    color: #b3405a;
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .note {
+    color: #555;
+    font-style: italic;
+  }
+
+  table.merge {
+    border-collapse: collapse;
+    margin: 4px 0 10px 0;
+  }
+
+  table.merge td {
+    border: 1px solid #ccc;
+    padding: 3px 8px;
+  }
+
+  table.merge td.step {
+    background-color: #eef2f6;
+    font-weight: bold;
+    text-align: center;
+  }
 </style>
 
 <h2>&#128221; Workflow</h2>
 <ul>
-<li><b>New</b> / <b>Load from file...</b> - both ask Save/Discard/Cancel first if the current form has unsaved changes (the title bar shows a trailing <code>*</code> while dirty).</li>
-<li>Opening this dialog from the main module pre-loads whatever config is currently active there - you're usually editing the SAME config the module already has open, not starting fresh.</li>
-<li><b>Save config</b> always builds from the tabs (via the same logic as <b>Manual edit config &rarr; Refresh</b>) - it never silently saves stray text you typed somewhere without going through a field.</li>
+  <li><b>New</b> / <b>Load from file...</b> - both ask Save/Discard/Cancel first if the current form has unsaved changes
+    (the title bar shows a trailing <code>*</code> while dirty).</li>
+  <li>Opening this dialog from the main module pre-loads whatever config is currently active there - you're usually
+    editing the SAME config the module already has open, not starting fresh.</li>
+  <li><b>Save config</b> always builds from the tabs (via the same logic as <b>Manual edit config &rarr; Refresh</b>) -
+    it never silently saves stray text you typed somewhere without going through a field.</li>
 </ul>
 
 <h2>&#128736; General</h2>
 <ul>
-<li><code>study_dir</code> - base folder every relative path resolves against. Empty = the preseg CSV's own folder.</li>
-<li><b>Key columns</b> - the composite specimen ID, e.g. <code>ID</code> or <code>ID,measurement</code> - must exist, with matching values, in <b>both</b> CSVs. Use <b>"Show CSV columns..."</b> to check.</li>
-<li><b>Table columns</b> - which database.csv columns appear (and are editable) in the main module's table. Any column works, not just <code>done</code>.</li>
-<li><b>Batch mode</b> - shows a batch-select combo after Initialize Study, filtering by the chosen database.csv column (e.g. <code>batch</code>).</li>
-<li><b>Batch export</b> (bottom of this tab) - what batch_exporter() does with 'done' specimens. <b>Per-batch subfolder</b> needs Batch mode also enabled; exports to <code>&lt;output_dir&gt;/&lt;batch value&gt;/...</code> instead of one flat folder.</li>
+  <li><code>study_dir</code> - base folder every relative path resolves against. Empty = the preseg CSV's own folder.
+  </li>
+  <li><b>Key columns</b> - the composite specimen ID, e.g. <code>ID</code> or <code>ID,measurement</code> - must exist,
+    with matching values, in <b>both</b> CSVs. Use <b>"Show CSV columns..."</b> to check.</li>
+  <li><b>Table columns</b> - which database.csv columns appear (and are editable) in the main module's table. Any column
+    works, not just <code>done</code>.</li>
+  <li><b>Batch mode</b> - shows a batch-select combo after Initialize Study, filtering by the chosen database.csv column
+    (e.g. <code>batch</code>).</li>
+  <li><b>Batch export</b> (bottom of this tab, one "Batch Export" button) - runs against every 'done' specimen, in one
+    pass: <b>export segments</b>/<b>export markups</b> to files, and/or <b>compute custom per-segment statistics</b>
+    ("Also compute custom per-segment statistics") - any combination. <b>Per-batch subfolder</b> needs Batch mode also
+    enabled; exports to <code>&lt;output_dir&gt;/&lt;batch value&gt;/...</code> instead of one flat folder. Statistics
+    (volume, min/max/mean/median/std, percentiles) are computed straight from Slicer's own segment export (handles
+    overlapping segments correctly) - needs numpy installed, nothing else. <b>Stats reference image(s)</b> - one or more
+    Images-tab names (comma-separated) to sample intensities from; "Use all loaded images" fills in every image
+    currently in the Images tab. Each sample image gets its OWN stats row per segment (an <code>image</code> column is
+    added alongside the key/segment columns) - all of them must share the segmentation's geometry (a mismatched one is
+    skipped with a warning). <b>Metrics</b> - comma-separated (volume, min, max, mean, median, std, percentile_&lt;N&gt;
+    e.g. percentile_25); leave empty to use the built-in default automatically, or use "Insert default" to see/edit it.
+    Every specimen's rows go into <b>one combined CSV</b> (<b>Stats output path</b>, study_dir-relative unless absolute,
+    "{datetime}", "{date}" or "{time}" substituted if present - defaults to <code>report.csv</code>), ordered by key
+    columns, then
+    image, then segment name.</li>
 </ul>
 
 <h2>&#128444; Images</h2>
 <ul>
-<li><b>Quick-add table</b> - one row per preseg CSV column (key columns excluded). Check <b>Add</b> to include it as an image row; check <b>Labelmap</b> if it's a mask/label image instead of a regular volume.</li>
-<li><code>Pattern</code> (regex) - instead of one fixed image, opens <b>one image per matching, non-empty</b> preseg.csv column for a given specimen. Name = that column's name (Strip prefix/suffix trims it). Different specimens can end up with different numbers of images.</li>
-<li><b>Role</b> - background/label/foreground control slice-view layers (label/foreground also use Opacity). <code>(none)</code> = loaded but not shown as a layer.</li>
-<li><b>Preset</b> - a <u>dropdown</u>, populated live from whatever's currently in the Presets JSON field (Defaults/Presets tab). Add/rename a preset there and every row's list updates immediately, keeping each row's current selection if it's still valid.</li>
-<li><b>Color table</b> - also a dropdown, pre-filled with common built-in Slicer color tables (Grey, Rainbow, the PET-* and Warm/Cool families, single-hue <code>vtkMRMLColorTableNode*</code> tables) - but it's <u>editable</u>, so type any other valid color node ID/name if yours isn't listed.</li>
-<li><b>Edit advanced...</b> - window/level, threshold, interpolate for just that row. Rows with something set here are tinted and show a short summary in the <b>Advanced</b> column. The <b>Effective settings</b> box below the table always shows the actual merged result for the selected row.</li>
+  <li><b>Quick-add table</b> - one row per preseg CSV column (key columns excluded). Check <b>Add</b> to include it as
+    an image row; check <b>Labelmap</b> if it's a mask/label image instead of a regular volume.</li>
+  <li><code>Pattern</code> (regex) - instead of one fixed image, opens <b>one image per matching, non-empty</b>
+    preseg.csv column for a given specimen. Name = that column's name (Strip prefix/suffix trims it). Different
+    specimens can end up with different numbers of images.</li>
+  <li><b>Role</b> - background/label/foreground control slice-view layers (label/foreground also use Opacity).
+    <code>(none)</code> = loaded but not shown as a layer.
+  </li>
+  <li><b>Preset</b> - a <u>dropdown</u>, populated live from whatever's currently in the Presets JSON field
+    (Defaults/Presets tab). Add/rename a preset there and every row's list updates immediately, keeping each row's
+    current selection if it's still valid.</li>
+  <li><b>Color table</b> - also a dropdown, pre-filled with common built-in Slicer color tables (Grey, Rainbow, the
+    PET-* and Warm/Cool families, single-hue <code>vtkMRMLColorTableNode*</code> tables) - but it's <u>editable</u>, so
+    type any other valid color node ID/name if yours isn't listed.</li>
+  <li><b>Edit advanced...</b> - window/level, threshold, interpolate for just that row. Rows with something set here are
+    tinted and show a short summary in the <b>Advanced</b> column. The <b>Effective settings</b> box below the table
+    always shows the actual merged result for the selected row.</li>
 </ul>
 <table class="merge">
-<tr><td class="step">1</td><td><code>defaults.image</code> - applies to every row</td></tr>
-<tr><td class="step">2</td><td>named <code>preset</code> - only if that row's Preset column names one</td></tr>
-<tr><td class="step">3</td><td>the row's own fields - always wins</td></tr>
+  <tr>
+    <td class="step">1</td>
+    <td><code>defaults.image</code> - applies to every row</td>
+  </tr>
+  <tr>
+    <td class="step">2</td>
+    <td>named <code>preset</code> - only if that row's Preset column names one</td>
+  </tr>
+  <tr>
+    <td class="step">3</td>
+    <td>the row's own fields - always wins</td>
+  </tr>
 </table>
 
 <h2>&#129504; Segmentation</h2>
 <ul>
-<li><b>Reference image</b> - an Images-tab <code>name</code> used as the geometry reference for the whole segmentation.</li>
-<li><b>Path pattern</b> - fallback naming for segment rows with no CSV column/path of their own, e.g. <code>{ID}/{measurement}/{ID}-{segment_name}.nii.gz</code>.</li>
-<li><b>Source = file</b> - tries CSV column / path pattern, falls back to an empty placeholder if nothing resolves. <b>Source = empty</b> - never tries a file, always a manual placeholder.</li>
+  <li><b>Reference image</b> - an Images-tab <code>name</code> used as the geometry reference for the whole
+    segmentation.</li>
+  <li><b>Path pattern</b> - fallback naming for segment rows with no CSV column/path of their own, e.g.
+    <code>{ID}/{measurement}/{ID}-{segment_name}.nii.gz</code>.
+  </li>
+  <li><b>Source = file</b> - tries CSV column / path pattern, falls back to an empty placeholder if nothing resolves.
+    <b>Source = empty</b> - never tries a file, always a manual placeholder.
+  </li>
 </ul>
 
 <h2>&#128204; Landmarks</h2>
 <ul>
-<li><b>Template file</b> - if a specimen has no markups yet, this file loads as the starting point (renamed to that specimen) instead of an empty fiducial list.</li>
+  <li><b>Template file</b> - if a specimen has no markups yet, this file loads as the starting point (renamed to that
+    specimen) instead of an empty fiducial list.</li>
 </ul>
 
 <h2>&#128421; Workspace</h2>
 <ul>
-<li>Everything here is applied once, per specimen, to the 3D Slicer <i>workspace</i> itself - not to any data.</li>
-<li><b>Window/level</b> - blanket min/max for every loaded volume. <b>Slice rotation</b> - in-plane rotation (degrees) for Red/Yellow/Green, same as the Reformat module's slider; leave a view's field empty to leave it alone.</li>
-<li><b>Crosshair</b> - Mode/Behavior/Thickness dropdowns (editable - type the exact Slicer/VTK constant name if yours isn't listed). Leave at <code>(unset)</code> to keep this module's usual default (ShowBasic / OffsetJumpSlice / Fine).</li>
-<li><b>Ruler</b> - adds a scale ruler to every slice view. <code>(unset)</code> = leave alone.</li>
-<li><b>3D marker / 2D marker</b> - the orientation-marker widget (Axes/Cube/Human) shown in the 3D view and/or every slice view - both use the same underlying property, configured independently. Volume rendering always shows a 3D marker (Axes/Large by default) regardless, unless overridden here.</li>
-<li><b>View convention</b> - Radiological (Slicer's own default: patient's right on screen-left) or Neurological (patient's right on screen-right). Only affects Axial/Coronal - Sagittal has no left/right to flip.</li>
+  <li>Everything here is applied once, per specimen, to the 3D Slicer <i>workspace</i> itself - not to any data.</li>
+  <li><b>Window/level</b> - blanket min/max for every loaded volume. <b>Slice rotation</b> - in-plane rotation (degrees)
+    for Red/Yellow/Green, same as the Reformat module's slider; leave a view's field empty to leave it alone.</li>
+  <li><b>Crosshair</b> - Mode/Behavior/Thickness dropdowns (editable - type the exact Slicer/VTK constant name if yours
+    isn't listed). Leave at <code>(unset)</code> to keep this module's usual default (ShowBasic / OffsetJumpSlice /
+    Fine).</li>
+  <li><b>Ruler</b> - adds a scale ruler to every slice view. <code>(unset)</code> = leave alone.</li>
+  <li><b>3D marker / 2D marker</b> - the orientation-marker widget (Axes/Cube/Human) shown in the 3D view and/or every
+    slice view - both use the same underlying property, configured independently. Volume rendering always shows a 3D
+    marker (Axes/Large by default) regardless, unless overridden here.</li>
+  <li><b>View convention</b> - Radiological (Slicer's own default: patient's right on screen-left) or Neurological
+    (patient's right on screen-right). Only affects Axial/Coronal - Sagittal has no left/right to flip.</li>
 </ul>
 
 <h2>&#128394; Segment editor</h2>
 <ul>
-<li><b>Overwrite mode = none</b> - same as the Segment Editor's "Allow overlap" checkbox. <code>all_segments</code>/<code>visible_segments</code> restrict painting so it doesn't eat into other segments.</li>
-<li><b>Use absolute size (mm)</b> checked + shape <code>sphere</code> - fixed-size 3D brush in millimeters, regardless of zoom (e.g. always exactly 5&nbsp;mm). Unchecked - size as a % of the slice view instead (grows/shrinks as you zoom).</li>
-<li>Applied <b>once</b>, at Study Init - not re-applied per specimen. It's set on two places so it works whether or not Segment Editor was already opened this session:
-  <ul>
-  <li>the <b>default/template</b> node - used when Segment Editor is opened for the <i>first</i> time this session;</li>
-  <li>an already-<b>live</b> Segment Editor node, if one already exists (you opened the module earlier).</li>
-  </ul>
-</li>
-<li><b>Active effect on load</b> - which effect (e.g. <code>Paint</code>) should already be selected. Left empty, the user just picks an effect manually - the brush size/shape above still applies whenever they pick Paint.</li>
+  <li><b>Overwrite mode = none</b> - same as the Segment Editor's "Allow overlap" checkbox.
+    <code>all_segments</code>/<code>visible_segments</code> restrict painting so it doesn't eat into other segments.
+  </li>
+  <li><b>Use absolute size (mm)</b> checked + shape <code>sphere</code> - fixed-size 3D brush in millimeters, regardless
+    of zoom (e.g. always exactly 5&nbsp;mm). Unchecked - size as a % of the slice view instead (grows/shrinks as you
+    zoom).</li>
+  <li>Applied <b>once</b>, at Study Init - not re-applied per specimen. It's set on two places so it works whether or
+    not Segment Editor was already opened this session:
+    <ul>
+      <li>the <b>default/template</b> node - used when Segment Editor is opened for the <i>first</i> time this session;
+      </li>
+      <li>an already-<b>live</b> Segment Editor node, if one already exists (you opened the module earlier).</li>
+    </ul>
+  </li>
+  <li><b>Active effect on load</b> - which effect (e.g. <code>Paint</code>) should already be selected. Left empty, the
+    user just picks an effect manually - the brush size/shape above still applies whenever they pick Paint.</li>
 </ul>
 <p><b>Raw attributes - what it's for and how to use it.</b> Slicer stores each effect's settings as plain key/value
-pairs on the segment editor node. <b>Common</b> parameters shared by multiple effects (brush size/shape) have
-<u>no prefix</u> - just the bare name. <b>Effect-specific</b> parameters are prefixed <code>EffectName.ParamName</code>
-(a literal dot). Example dump of a real node's attributes:</p>
+  pairs on the segment editor node. <b>Common</b> parameters shared by multiple effects (brush size/shape) have
+  <u>no prefix</u> - just the bare name. <b>Effect-specific</b> parameters are prefixed
+  <code>EffectName.ParamName</code>
+  (a literal dot). Example dump of a real node's attributes:
+</p>
 <pre>BrushAbsoluteDiameter: 25
 BrushDiameterIsRelative: 1
 BrushSphere: 0
@@ -95,33 +200,51 @@ Paint.ColorSmudge: 0
 Threshold.MinimumThreshold: 69.75
 Threshold.AutoThresholdMethod: OTSU</pre>
 <p>So <code>"attributes": {"BrushSphere": "1"}</code> is correct; <code>"Paint,BrushSphere"</code> or
-<code>"Paint.BrushSphere"</code> is <b>not</b> a real key and silently does nothing. If a setting you configured
-through the structured fields above doesn't seem to stick, the fastest way to find the real key on <i>your</i>
-Slicer version:</p>
+  <code>"Paint.BrushSphere"</code> is <b>not</b> a real key and silently does nothing. If a setting you configured
+  through the structured fields above doesn't seem to stick, the fastest way to find the real key on <i>your</i>
+  Slicer version:
+</p>
 <ol>
-<li>Open Segment Editor by hand, change the setting you want (e.g. tick "Sphere brush").</li>
-<li>Open the Python console and run: <code>print(slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLSegmentEditorNode"))</code></li>
-<li>Read the exact attribute name + value from the printed list, and add it under <b>Raw attributes</b> here
-(it's applied last, so it overrides the structured fields above if there's any conflict).</li>
+  <li>Open Segment Editor by hand, change the setting you want (e.g. tick "Sphere brush").</li>
+  <li>Open the Python console and run:
+    <code>print(slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLSegmentEditorNode"))</code>
+  </li>
+  <li>Read the exact attribute name + value from the printed list, and add it under <b>Raw attributes</b> here
+    (it's applied last, so it overrides the structured fields above if there's any conflict).</li>
 </ol>
 
 <h2>&#127760; Volume rendering</h2>
 <ul>
-<li>One row per Images-tab image. <b>Any number</b> can have <b>Enable</b> checked at once - each gets its own independent 3D volume rendering.</li>
-<li><b>Preset</b> - a built-in Slicer VR preset name (editable combo - type your own if it's not in the list).</li>
-<li><b>Min/Max</b> - optional. Rescales the preset's opacity/color transfer function into that scalar range, e.g. narrowing a CT preset to a specific Hounsfield window for this specimen's data.</li>
-<li><b>Offset</b> - optional. Shifts the transfer function by a fixed amount, keeping its shape/spacing (classic "Shift" behavior). Wins over Min/Max if both are set.</li>
-<li>Leave Min/Max/Offset all empty to use the preset exactly as shipped.</li>
-<li><b>Refresh image list</b> - re-syncs rows with the Images tab (new/renamed/removed images), keeping existing settings for images that still exist by name.</li>
+  <li>One row per Images-tab image. <b>Any number</b> can have <b>Enable</b> checked at once - each gets its own
+    independent 3D volume rendering.</li>
+  <li><b>Preset</b> - a built-in Slicer VR preset name (editable combo - type your own if it's not in the list).</li>
+  <li><b>Min/Max</b> - optional. Rescales the preset's opacity/color transfer function into that scalar range, e.g.
+    narrowing a CT preset to a specific Hounsfield window for this specimen's data.</li>
+  <li><b>Offset</b> - optional. Shifts the transfer function by a fixed amount, keeping its shape/spacing (classic
+    "Shift" behavior). Wins over Min/Max if both are set.</li>
+  <li>Leave Min/Max/Offset all empty to use the preset exactly as shipped.</li>
+  <li><b>Refresh image list</b> - re-syncs rows with the Images tab (new/renamed/removed images), keeping existing
+    settings for images that still exist by name.</li>
 </ul>
-<p class="note">Note: the render itself is correct, but Slicer's own Volume Rendering module's "Shift" slider won't reflect the offset - cosmetic only.</p>
+<p class="note">Note: the render itself is correct, but Slicer's own Volume Rendering module's "Shift" slider won't
+  reflect the offset - cosmetic only.</p>
 
 <h2>&#127912; Defaults / Presets</h2>
 <p>Three layers, merged in this order for every image (last one wins, per field):</p>
 <table class="merge">
-<tr><td class="step">1</td><td><code>defaults.image</code> &ndash; applies to <b>every</b> image row automatically</td></tr>
-<tr><td class="step">2</td><td>the named <code>presets[&lt;name&gt;]</code> entry &ndash; only if that row's <b>Preset</b> column names one</td></tr>
-<tr><td class="step">3</td><td>the row's own columns / <b>Edit advanced...</b> popup &ndash; always wins</td></tr>
+  <tr>
+    <td class="step">1</td>
+    <td><code>defaults.image</code> &ndash; applies to <b>every</b> image row automatically</td>
+  </tr>
+  <tr>
+    <td class="step">2</td>
+    <td>the named <code>presets[&lt;name&gt;]</code> entry &ndash; only if that row's <b>Preset</b> column names one
+    </td>
+  </tr>
+  <tr>
+    <td class="step">3</td>
+    <td>the row's own columns / <b>Edit advanced...</b> popup &ndash; always wins</td>
+  </tr>
 </table>
 <p><b>Worked example.</b> Say you're setting up a multi-sequence MRI study:</p>
 <pre>"defaults": {
@@ -133,22 +256,33 @@ Slicer version:</p>
 }</pre>
 <p>Now three image rows:</p>
 <ul>
-<li><code>t1</code> &rarr; Preset = <code>mri_t1</code>, nothing else set.
-  Effective: <code>interpolate:true</code> (from defaults) + <code>window_level:auto, color_table:Grey</code> (from the preset).</li>
-<li><code>flair</code> &rarr; Preset = <code>mri_flair</code>, but its own Advanced popup sets <code>window_level: {min:0, max:600}</code>.
-  Effective: the row's own 0-600 wins over the preset's 0-400 - everything else from the preset still applies.</li>
-<li><code>dwi</code> &rarr; no Preset at all. Effective: just <code>type:volume, required:false, interpolate:true</code> from defaults - nothing else.</li>
+  <li><code>t1</code> &rarr; Preset = <code>mri_t1</code>, nothing else set.
+    Effective: <code>interpolate:true</code> (from defaults) + <code>window_level:auto, color_table:Grey</code> (from
+    the preset).</li>
+  <li><code>flair</code> &rarr; Preset = <code>mri_flair</code>, but its own Advanced popup sets
+    <code>window_level: {min:0, max:600}</code>.
+    Effective: the row's own 0-600 wins over the preset's 0-400 - everything else from the preset still applies.
+  </li>
+  <li><code>dwi</code> &rarr; no Preset at all. Effective: just
+    <code>type:volume, required:false, interpolate:true</code> from defaults - nothing else.
+  </li>
 </ul>
 <p><code>defaults.segment</code> works the same way but one level only (<code>defaults.segment</code> &rarr; the segment
-row's own fields - segments don't have named presets).</p>
-<p class="note">A new config already starts with two starter presets (<code>ct_soft_tissue</code>, <code>ct_bone</code>) -
-edit or delete them freely. "Show example presets..." has a much bigger catalogue (CT/MRI/PET windows, colored
-overlays) to copy from, plus an "Insert ALL" button.</p>
+  row's own fields - segments don't have named presets).</p>
+<p class="note">A new config already starts with two starter presets (<code>ct_soft_tissue</code>, <code>ct_bone</code>)
+  -
+  edit or delete them freely. "Show example presets..." has a much bigger catalogue (CT/MRI/PET windows, colored
+  overlays) to copy from, plus an "Insert ALL" button.</p>
 
 <h2>&#128190; Manual edit config</h2>
 <ul>
-<li><b>Refresh from form</b> - regenerates the JSON box from every other tab's current state. This is exactly the JSON <b>Save config</b> would write - a live "what am I actually about to save" preview.</li>
-<li><b>Apply to form</b> - the reverse: parses whatever JSON is in the box and pushes it into every other tab (like Load from file, but from this text instead of disk). Handy for pasting in a config someone sent you in chat, or for a quick hand-edit of something with no dedicated field yet.</li>
-<li><b>Save always saves from the tabs</b> - if you hand-edit the JSON here, click Apply first, or your edits won't make it into the saved file.</li>
+  <li><b>Refresh from form</b> - regenerates the JSON box from every other tab's current state. This is exactly the JSON
+    <b>Save config</b> would write - a live "what am I actually about to save" preview.
+  </li>
+  <li><b>Apply to form</b> - the reverse: parses whatever JSON is in the box and pushes it into every other tab (like
+    Load from file, but from this text instead of disk). Handy for pasting in a config someone sent you in chat, or for
+    a quick hand-edit of something with no dedicated field yet.</li>
+  <li><b>Save always saves from the tabs</b> - if you hand-edit the JSON here, click Apply first, or your edits won't
+    make it into the saved file.</li>
 </ul>
 <p class="note">Tip: select any text above (Ctrl+A / Ctrl+C) to copy it.</p>

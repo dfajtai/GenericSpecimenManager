@@ -318,7 +318,13 @@ class WorkspaceConfig:
 
 @dataclass
 class BatchExportConfig:
-    """cfg.batch_export - what batch_exporter() does with 'done' specimens (which segments/markups, where to write them)."""
+    """cfg.batch_export - what BatchProcessor (GenericSpecimenEngine.py) does
+    with every 'done' specimen, in ONE pass: export segment labelmaps to
+    files, export markups, and/or compute custom per-segment statistics
+    into one combined CSV - any combination. Whichever of these is turned
+    on decides what gets loaded per specimen (a lean load, skipping
+    workspace/volume-rendering/Segment-Editor setup - see
+    GenericSpecimen.load_for_batch())."""
     enabled: bool = False
     export_segments: bool = False
     export_markups: bool = False
@@ -326,6 +332,29 @@ class BatchExportConfig:
     segments_filter: Optional[List[str]] = None
     output_dir: Optional[str] = None
     per_batch_subfolder: bool = False        # if batch_mode is on: export into out_dir/<batch>/... instead of flat
+
+    # Custom per-segment statistics (volume/min/max/mean/median/std/
+    # percentile_<N>), computed straight from Slicer's own per-segment
+    # labelmap export + slicer.util.arrayFromVolume() - not from any
+    # external file-reading library, so overlapping segments are handled
+    # correctly (each segment's mask is independently exported, not
+    # decoded from one shared multi-label array).
+    compute_stats: bool = False
+    # One or more Images-tab names to sample intensities from - one stats
+    # row per (specimen, sample image, segment). Falls back to
+    # `reference_image` above, then segmentation.reference_image, wrapped
+    # in a single-item list, if unset. All sample images must share the
+    # segment labelmap's geometry (same grid) - a mismatched one is
+    # skipped with a warning, not silently misread.
+    stats_reference_images: Optional[List[str]] = None
+    # Comma-separated in the Config Editor; each entry is volume/min/max/
+    # mean/median/std or percentile_<N> (e.g. percentile_25). Unset/empty
+    # falls back to Definitions.DEFAULT_STATS_METRICS.
+    stats_metrics: Optional[List[str]] = None
+    # Plain path for the combined CSV - study_dir-relative if not
+    # absolute (no {study_dir} placeholder needed). "{datetime}", "{date}" 
+    # or "{time}" is substituted if present. Defaults to "report.csv".
+    stats_output_path: Optional[str] = None
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):

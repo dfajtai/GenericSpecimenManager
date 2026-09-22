@@ -29,15 +29,15 @@
       <item>
        <widget class="QWidget" name="widget_0" native="true">
         <layout class="QGridLayout" name="gridLayout_0">
+         <item row="2" column="0" colspan="2">
+          <widget class="QLineEdit" name="tbConfigPath"/>
+         </item>
          <item row="1" column="1">
           <widget class="QPushButton" name="btnSelectConfig">
            <property name="text">
             <string>Select .json file</string>
            </property>
           </widget>
-         </item>
-         <item row="2" column="0" colspan="2">
-          <widget class="QLineEdit" name="tbConfigPath"/>
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="lblConfig">
@@ -49,7 +49,7 @@
          <item row="0" column="0" colspan="2">
           <widget class="QPushButton" name="btnConfigEditor">
            <property name="text">
-            <string>Open Config Editor</string>
+            <string>Config Editor...</string>
            </property>
           </widget>
          </item>
@@ -118,6 +118,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="btnBatchExport">
+        <property name="toolTip">
+         <string>Runs cfg.batch_export against every 'done' specimen: exports segments/markups to files and/or computes custom per-segment statistics into one combined CSV, depending on what's enabled in the Config Editor's General tab.</string>
+        </property>
         <property name="text">
          <string>Batch Export</string>
         </property>

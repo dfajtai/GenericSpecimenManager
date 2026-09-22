@@ -30,7 +30,7 @@ from Resources.Definitions import (
     ROLE_CHOICES, TYPE_CHOICES, SOURCE_CHOICES, OVERWRITE_CHOICES, BRUSH_SHAPE_CHOICES,
     COLOR_TABLE_CHOICES, VR_PRESET_CHOICES, CROSSHAIR_MODE_CHOICES, CROSSHAIR_BEHAVIOR_CHOICES,
     CROSSHAIR_THICKNESS_CHOICES, RULER_TYPE_CHOICES, ORIENTATION_MARKER_TYPE_CHOICES,
-    ORIENTATION_MARKER_SIZE_CHOICES,
+    ORIENTATION_MARKER_SIZE_CHOICES, DEFAULT_STATS_METRICS,
 )
 
 import qt
@@ -438,6 +438,48 @@ class ConfigEditorDialog(qt.QDialog):
         self.chkBePerBatchSubfolder = qt.QCheckBox("Per-batch subfolder (requires batch mode)")
         self.chkBePerBatchSubfolder.setToolTip("Exports into <output_dir>/<batch value>/... instead of one flat folder. Needs 'Enable batch mode' above.")
         form.addRow(self.chkBePerBatchSubfolder)
+
+        self.chkBeComputeStats = qt.QCheckBox("Also compute custom per-segment statistics")
+        self.chkBeComputeStats.setToolTip(
+            "Needs numpy installed. Computed straight from Slicer's own segment export (handles "
+            "overlapping segments correctly) - every 'done' specimen's rows go into ONE combined CSV.")
+        form.addRow(self.chkBeComputeStats)
+        statsRefRow = qt.QHBoxLayout()
+        self.statsReferenceImagesEdit = qt.QLineEdit()
+        self.statsReferenceImagesEdit.setPlaceholderText("comma-separated Images-tab names")
+        self.statsReferenceImagesEdit.setToolTip(
+            "One or more Images-tab names to sample intensities from - a SEPARATE stats row per "
+            "(specimen, sample image, segment), added to the ID/segment columns. All of them must "
+            "share the segmentation's geometry (same grid). If empty, falls back to Reference image "
+            "above, then segmentation.reference_image.")
+        statsRefRow.addWidget(self.statsReferenceImagesEdit)
+        statsRefAllBtn = qt.QPushButton("Use all loaded images")
+        statsRefAllBtn.setToolTip("Fills in every image name currently in the Images tab.")
+        statsRefAllBtn.connect('clicked(bool)', lambda checked=False: self._onUseAllImagesForStats())
+        statsRefRow.addWidget(statsRefAllBtn)
+        form.addRow("Stats reference image(s):", statsRefRow)
+
+        metricsRow = qt.QHBoxLayout()
+        self.statsMetricsEdit = qt.QLineEdit()
+        self.statsMetricsEdit.setPlaceholderText("volume,min,max,mean,median,std,percentile_5,percentile_25,percentile_75,percentile_95")
+        self.statsMetricsEdit.setToolTip(
+            "Comma-separated: volume, min, max, mean, median, std, and/or percentile_<N> (e.g. "
+            "percentile_25) - each becomes one CSV column. Leave empty to use that same default "
+            "automatically - you don't have to type it yourself unless you want something different.")
+        metricsRow.addWidget(self.statsMetricsEdit)
+        statsMetricsDefaultBtn = qt.QPushButton("Insert default")
+        statsMetricsDefaultBtn.setToolTip("Fills in the default metric list - the same one used automatically if you leave this empty, just visible/editable from here.")
+        statsMetricsDefaultBtn.connect('clicked(bool)', lambda checked=False: self._onInsertDefaultStatsMetrics())
+        metricsRow.addWidget(statsMetricsDefaultBtn)
+        form.addRow("Metrics:", metricsRow)
+
+        self.statsOutputPathEdit = qt.QLineEdit()
+        self.statsOutputPathEdit.setPlaceholderText("report.csv")
+        self.statsOutputPathEdit.setToolTip(
+            "Where the ONE combined CSV is written - study_dir-relative unless absolute (no need to "
+            "spell out study_dir yourself). \"{datetime}\", \"{date}\" or \"{time}\" is substituted if present. "
+            "Leave empty to default to report.csv.")
+        form.addRow("Stats output path:", self.statsOutputPathEdit)
 
         return w
 
@@ -1298,6 +1340,20 @@ class ConfigEditorDialog(qt.QDialog):
 
         return w
 
+    def _onUseAllImagesForStats(self):
+        """Fill Stats reference image(s) with every non-empty Name in the Images tab table (pattern-mode rows, which have no fixed literal name, are skipped)."""
+        names = []
+        for row in range(self.imgTable.rowCount):
+            item = self.imgTable.item(row, 0)
+            name = (item.text().strip() if item else "")
+            if name:
+                names.append(name)
+        self.statsReferenceImagesEdit.text = ",".join(names)
+
+    def _onInsertDefaultStatsMetrics(self):
+        """Fill the batch-export stats Metrics field with the same default (Definitions.DEFAULT_STATS_METRICS) that's used automatically when the field is left empty - just makes it visible/editable."""
+        self.statsMetricsEdit.text = ",".join(DEFAULT_STATS_METRICS)
+
     def _onInsertDefaultsImageExample(self):
         """Fill defaults.image with a small starter example, asking for confirmation first if the field isn't already empty."""
         if self.defaultsImageEdit.plainText.strip():
@@ -1486,13 +1542,14 @@ class ConfigEditorDialog(qt.QDialog):
                      self.wlMinEdit, self.wlMaxEdit,
                      self.sliceRotRedEdit, self.sliceRotYellowEdit, self.sliceRotGreenEdit,
                      self.beReferenceImageEdit, self.beSegmentsFilterEdit, self.beOutputDirEdit,
+                     self.statsReferenceImagesEdit, self.statsMetricsEdit, self.statsOutputPathEdit,
                      self.brushDiameterEdit, self.activeEffectEdit):
             edit.text = ""
         self.doneColumnEdit.text = "done"
         self.segOutputFilenameEdit.text = "segment.seg.nrrd"
         for chk in (self.chkBatchMode, self.chkSegEnabled, self.chkLmEnabled,
                     self.chkWlEnabled, self.chkSliceRotationEnabled, self.chkBeEnabled, self.chkBeExportSegments,
-                    self.chkBeExportMarkups, self.chkBePerBatchSubfolder):
+                    self.chkBeExportMarkups, self.chkBePerBatchSubfolder, self.chkBeComputeStats):
             chk.checked = False
         self.chkLmWritable.checked = True
         self.chkBrushAbsolute.checked = True
@@ -1669,6 +1726,10 @@ class ConfigEditorDialog(qt.QDialog):
         self.beSegmentsFilterEdit.text = ",".join(be.get("segments_filter") or [])
         self.beOutputDirEdit.text = be.get("output_dir", "") or ""
         self.chkBePerBatchSubfolder.checked = bool(be.get("per_batch_subfolder"))
+        self.chkBeComputeStats.checked = bool(be.get("compute_stats"))
+        self.statsReferenceImagesEdit.text = ",".join(be.get("stats_reference_images") or [])
+        self.statsMetricsEdit.text = ",".join(be.get("stats_metrics") or [])
+        self.statsOutputPathEdit.text = be.get("stats_output_path", "") or ""
 
         se = cfg.get("segment_editor", {}) or {}
         self.overwriteModeCombo.currentText = se.get("overwrite_mode", "none") or "none"
@@ -1848,6 +1909,7 @@ class ConfigEditorDialog(qt.QDialog):
                 "export_segments": self.chkBeExportSegments.checked,
                 "export_markups": self.chkBeExportMarkups.checked,
                 "per_batch_subfolder": self.chkBePerBatchSubfolder.checked,
+                "compute_stats": self.chkBeComputeStats.checked,
             }
             if self.beReferenceImageEdit.text.strip():
                 be["reference_image"] = self.beReferenceImageEdit.text.strip()
@@ -1856,6 +1918,22 @@ class ConfigEditorDialog(qt.QDialog):
                 be["segments_filter"] = filt
             if self.beOutputDirEdit.text.strip():
                 be["output_dir"] = self.beOutputDirEdit.text.strip()
+            filt = _csv_list(self.statsReferenceImagesEdit.text)
+            if filt:
+                be["stats_reference_images"] = filt
+            metrics_text = self.statsMetricsEdit.text.strip()
+            if metrics_text:
+                metrics = []
+                for m in _csv_list(metrics_text):
+                    if m.replace(".", "", 1).isdigit():
+                        qt.QMessageBox.critical(
+                            self, "Config Editor",
+                            f"Stats metric '{m}' looks like a bare number - did you mean 'percentile_{m}'?")
+                        raise ValueError(f"invalid stats metric: {m}")
+                    metrics.append(m)
+                be["stats_metrics"] = metrics
+            if self.statsOutputPathEdit.text.strip():
+                be["stats_output_path"] = self.statsOutputPathEdit.text.strip()
             cfg["batch_export"] = be
 
         overwrite = self.overwriteModeCombo.currentText
