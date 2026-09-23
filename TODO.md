@@ -9,10 +9,10 @@
 - [x] Slice rotation config (Red/Yellow/Green in-plane rotation)
 - [x] Workspace tab (window/level, slice rotation, crosshair, ruler, orientation marker)
 - [x] ~~_Colored logging_~~ [2026-09-18]
-- [x] ~~_Update README.md_~~ [2026-09-18]
 - [x] ~~_Radiologist / Neurologist view convention_~~ [2026-09-18]
 - [x] ~~_Batch mode custom 'segment statistics' reporting to a CSV file._~~ [2026-09-22]
 - [x] ~~_Batch export (export segmentations to masks - segment by segment, handling overlap.) fixes._~~ [2026-09-22]
+- [x] ~~_Batch export rework with additional features (segment statistics, landmark summary, and so)_~~ [2026-09-23]
 
 ## Dropped
 
@@ -21,7 +21,14 @@
 
 ## Open
 
-- [ ] Batch export -> Per-batch subfolder ON + Batch export output dir (option) defined as {KEY_x}. -> wrong substituition. Enable Batch mode did not affect the export either... So... make this more didactic/coherent for the user: rename "Enable batch mode" to "Filter subject by batches". Then rework Batch export block. Maybe put Batch Export inside a group box, move "..per-segment statistics" checkbox after "Export markups", suggest referecne image name from loaded images, then... Output dir... is a total mess with Per-batch subfolder too... and stats too. Maybe add a per-batch OPERATION (per-batch or all subject). This will affect the output of segment masks, markups and the stats csv paths too.
+- [ ] Config Editor / Batch Export fül. Refinement, rework.
+      Fontos, hogy minden változás vissza legyen vezetve a teljes kódba, így a HELP és a README is legyen koheren a végén
+      Batch operations sorrend változik: export segments, Custom segment statistics, ÚJ SOR, Export markups, Makrup summary.
+      A "landmarks" legyen mindenhol "markups"-ra átnevezve (Config Editor, tooltipek, Help, kód, Config model, Readme, mindenhol...). Legyen koherens a slicer elnevezéssel, és konzisztens az egész kódbázisban.
+      A Batch Operations, Export settings, Landmark sumamry settings, mellé nem kell a szöveg.
+      Export settings -> Segment export settings-re átnevezve. Reference image maradhat, segments filter, export dir, mind maradhat.
+      Ez után legyen a Segment statistics settings rész. Kb. minden maradhat, de másodiknak adj hozzá egy külön segments filtert (a korábbi segments filter logikával azonos, de ez csak a segment stat ot befolyásolja.). Adj a {date}, {time}, {datetime} logika mellé egy index logikát, ami \_XX (két integeres index, \_01-től kezdve) ad a fájlnév után - kiterjesztés elé - automatikusan, hogy elkerülje a felülírást (csak akkor törődik a felülírással, ha az {index} tag szerepel, különben kérdés nélkül felülírja a korábbit.)
+      Aztán jöhet a MARKUP (korábbi landmark) summary settings. Ez változatlan - csak ugye át van nevezve. A BatchExporter a háttérben adja hozzá a {date}, {time}, {datetime}, plusz az új {index} logikát.
 
 * [ ] **Examples/ folder: real configs + README**
 

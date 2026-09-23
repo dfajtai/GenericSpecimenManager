@@ -34,34 +34,37 @@
 <li><b>Key columns</b> - the composite specimen ID, e.g. <code>ID</code> or <code>ID,measurement</code> - must exist, with matching values, in <b>both</b> CSVs. Use <b>"Show CSV columns..."</b> to check.</li>
 <li><b>Table columns</b> - which database.csv columns appear (and are editable) in the main module's table. Any column works, not just <code>done</code>.</li>
 <li><b>Output dir pattern</b> - where a specimen's own files (segmentation, markups, any image explicitly saved) live for <b>interactive</b> work: resolved per specimen (any key/database.csv/preseg.csv column in {braces}), used every time you load/save a specimen through the normal GUI ("Load selected specimen"/"Save progress"). This is different from Batch export's own output dir/output dir pattern further down, which only apply during a headless Batch Export run and never touch interactive work - the two are independent, and either can be set without the other.</li>
-<li><b>Group subjects by key</b> - shows a group-select combo after Initialize Study, filtering the specimen table by the chosen Group-by key (e.g. <code>batch</code>). This is purely a main-module viewing convenience - it does NOT affect Batch Export below.</li>
-<li><b>Batch export</b> - its own group box at the bottom of this tab; one "Batch Export" button in the main module runs it once, against every specimen marked <code>done</code> in the database, all in one pass, without opening the interactive viewer for each one.
+<li><b>Group subjects by key</b> - shows a group-select combo after Initialize Study, filtering the specimen table by the chosen Group-by key (e.g. <code>batch</code>). This is purely a main-module viewing convenience - it does NOT affect the Batch Export tab.</li>
+</ul>
+
+<a name="batch-export"></a>
+<h2>&#128230; Batch export</h2>
 <ul>
-<li><b>Enable batch export</b> - turns this whole section on; nothing below runs otherwise (their values are kept either way, just unused while off).</li>
-<li><b>Batch export output dir</b> - the base folder for this whole run: EVERYTHING below (segment files, markup files, and the report) is ultimately anchored to this. Empty -> <code>study_dir</code>; relative -> resolved under <code>study_dir</code>; absolute -> used as-is.</li>
+<li>Its own tab; one "Batch Export" button in the main module runs it once, against every specimen marked <code>done</code> in the database, all in one pass, without opening the interactive viewer for each one.</li>
+<li><b>Enable batch export</b> - turns this whole tab on; nothing below runs otherwise (their values are kept either way, just unused while off).</li>
+<li><b>Batch export output dir</b> - the base folder for this whole run: EVERYTHING below (segment files, markup files, and the reports) is ultimately anchored to this. Empty -> <code>study_dir</code>; relative -> resolved under <code>study_dir</code>; absolute -> used as-is.</li>
 <li><b>Batch operations</b> (check any combination):
 <ul>
 <li><b>Export segments</b> - each segment written to its own labelmap file.</li>
 <li><b>Export markups</b> - each specimen's markups/landmarks .mrk.json file, PLUS a per-specimen landmarks CSV (<code>label</code>, <code>x</code>, <code>y</code>, <code>z</code> - world/RAS position, read straight from the live markups node) automatically alongside it - no separate switch needed for that part.</li>
-<li><b>Landmarks report</b> - needs Export markups above also checked. In addition to the automatic per-specimen landmarks CSV, combines every specimen's landmarks into one or more CSVs (one row per landmark, key columns prepended) - configured in "Landmarks report settings" below.</li>
+<li><b>Landmark summary</b> - needs Export markups above also checked. In addition to the automatic per-specimen landmarks CSV, combines every specimen's landmarks into one or more CSVs (one row per landmark, key columns prepended) - configured in "Landmark summary settings" below.</li>
 <li><b>Custom segment statistics</b> - volume, min/max/mean/median/std, percentiles, computed straight from Slicer's own segment export (handles overlapping segments correctly, no third-party file reader) - needs numpy installed, nothing else. Configured in "Segment statistics settings" below.</li>
 </ul></li>
 <li><b>Export settings</b> - govern segment + markup export only (statistics share the same output dir but not the pattern, see below):
 <ul>
 <li><b>Reference image</b> - the geometry every exported segment labelmap is built on. "Suggest" fills it from the Images tab so you can just pick one.</li>
 <li><b>Segments filter</b> - comma-separated segment names to limit to; empty = all. "Use all segments" fills it from the Segmentation tab. Also affects which segments get stats rows, not just file export.</li>
-<li><b>Export dir pattern</b> - a curly-brace pattern (the SAME mechanism as this tab's own Output dir pattern - any key/database.csv/preseg.csv column) joined onto the output dir above and resolved separately for each specimen. Empty defaults the same way too (your key columns, joined). A database column that varies per specimen - e.g. a <code>batch</code> column - naturally routes different specimens into different subfolders just by being referenced here (e.g. <code>{batch}/{ID}</code>) - no separate on/off switch needed for that.</li>
+<li><b>Export dir pattern</b> - a curly-brace pattern (the SAME mechanism as the General tab's own Output dir pattern - any key/database.csv/preseg.csv column) joined onto the output dir above and resolved separately for each specimen. Empty defaults the same way too (your key columns, joined). A database column that varies per specimen - e.g. a <code>batch</code> column - naturally routes different specimens into different subfolders just by being referenced here (e.g. <code>{batch}/{ID}</code>) - no separate on/off switch needed for that.</li>
 </ul></li>
-<li><b>Segment statistics settings</b> (only used when "Custom segment statistics" is checked; shares the same output dir as the export settings above, but never goes through the export dir pattern):
+<li><b>Landmark summary settings</b> (only used when "Landmark summary" is checked; needs Export markups checked too):
+<ul>
+<li><b>Landmark summary pattern</b> - same idea as Report pattern below, applied to landmarks instead: a curly-brace pattern, resolved per specimen, anchored to Batch export output dir (or study_dir if empty), never nested through the export dir pattern. Points are read straight from each specimen's live markups node (label + world/RAS position) - NOT re-parsed from the .mrk.json file's stored "orientation" field, which is a display-only local axis frame (or, at the file level, just the LPS/RAS sign convention), not a per-point transform to apply on top of position. Leave empty to default to <code>landmarks_report.csv</code>. Rows are ordered by key columns, then label.</li>
+</ul></li>
+<li><b>Segment statistics settings</b>:
 <ul>
 <li><b>Stats reference image(s)</b> - one or more Images-tab names (comma-separated) to sample intensities from; "Use all loaded images" fills in every image in the Images tab. Each sample image gets its OWN stats row per segment (an <code>image</code> column joins the key/segment columns) - all must share the segmentation's geometry (a mismatched one is skipped with a warning).</li>
 <li><b>Metrics</b> - comma-separated: volume, min, max, mean, median, std, and/or <code>percentile_&lt;N&gt;</code> (e.g. <code>percentile_25</code>); leave empty for the built-in default, or "Insert default" to see/edit it.</li>
 <li><b>Report pattern</b> - a curly-brace pattern (same {column} mechanism as the export dir pattern above), resolved separately for each specimen. If relative, anchored to Batch export output dir above (the SAME folder segment/markup files use) - or study_dir directly if that's empty - but, unlike segment/markup files, NEVER nested through the export dir pattern; this is its own separate path straight under that folder. "{date}"/"{time}"/"{datetime}" also substituted if present. Specimens that resolve to the SAME final path share one CSV; referencing a column that varies (e.g. <code>{batch}/report.csv</code>) naturally splits those specimens into separate files instead - no separate on/off switch needed. Leave empty for <code>report.csv</code> (one shared file for everyone). Rows are ordered by key columns, then image, then segment name.</li>
-</ul></li>
-<li><b>Landmarks report settings</b> (only used when "Landmarks report" is checked; needs Export markups checked too):
-<ul>
-<li><b>Landmarks report pattern</b> - same idea as Report pattern above, applied to landmarks instead: a curly-brace pattern, resolved per specimen, anchored to Batch export output dir (or study_dir if empty), never nested through the export dir pattern. Points are read straight from each specimen's live markups node (label + world/RAS position) - NOT re-parsed from the .mrk.json file's stored "orientation" field, which is a display-only local axis frame (or, at the file level, just the LPS/RAS sign convention), not a per-point transform to apply on top of position. Leave empty to default to <code>landmarks_report.csv</code>. Rows are ordered by key columns, then label.</li>
-</ul></li>
 </ul></li>
 </ul>
 

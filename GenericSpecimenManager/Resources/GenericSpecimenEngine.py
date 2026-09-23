@@ -80,11 +80,6 @@ class GenericSpecimen:
         rel = self.cfg.output_dir_pattern.format(**self._context())
         return os.path.join(self.study_dir, rel)
 
-    def batch_value(self):
-        """This specimen's value in the configured batch_mode.column, or None if batch mode isn't set up."""
-        col = self.cfg.batch_mode.column
-        return self.db_info.get(col, "") if col else None
-
     def _context(self, extra=None):
         """Build the placeholder dict used to .format() path_pattern strings: every key column + every database.csv/preseg.csv column for this specimen, optionally topped up with extra keys (e.g. {'name': ...} for images, {'segment_name': ...} for segments)."""
         ctx = dict(self.context)
@@ -1141,9 +1136,9 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         logger.info(f"[GenericSpecimenManager] segment editor defaults applied: overwrite={overwrite_value}, attrs={attrs}, "
               f"active_effect_requested={se_cfg.active_effect}, patched_existing_node={existing_node is not None}")
 
-    def batch_values(self):
-        """Unique, sorted values of cfg.batch_mode.column across all specimens."""
-        col = self.cfg.batch_mode.column
+    def group_by_key_values(self):
+        """Unique, sorted values of cfg.group_by_key.column across all specimens."""
+        col = self.cfg.group_by_key.column
         if not col:
             return []
         return sorted({s.db_info.get(col, "") for s in self.specimens.values()} - {""})
@@ -1287,7 +1282,7 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
 
 class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
-    """The actual module GUI: config/CSV path pickers, the specimen table, batch-select combo, and the load/save/close/batch-export buttons. Subclassed per named wrapper module (CONFIG_PATH set) or used directly for the general-purpose config-picker module (CONFIG_PATH=None)."""
+    """The actual module GUI: config/CSV path pickers, the specimen table, group-select combo, and the load/save/close/batch-export buttons. Subclassed per named wrapper module (CONFIG_PATH set) or used directly for the general-purpose config-picker module (CONFIG_PATH=None)."""
     CONFIG_PATH = None
 
     # Actual on/off values live in Resources/Definitions.py (one place for
@@ -1313,7 +1308,7 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         self.tbl_selected_key = None
         self.table_lock = False
         self._displayed_keys = []
-        self._batch_filter = None
+        self._group_filter = None
 
     def setup(self):
         """Slicer calls this once when the module widget is first shown: load the .ui, wire every button/field, hide the config picker if CONFIG_PATH locks this wrapper to one study, and initialize the parameter node."""
@@ -1348,8 +1343,8 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         self.ui.btnSaveActiveSpecimen.connect('clicked(bool)', self.onBtnSaveActiveSpecimen)
         self.ui.btnCloseActiveSpecimen.connect('clicked(bool)', self.onBtnCloseActiveSpecimen)
         self.ui.btnSaveDB.connect('clicked(bool)', self.onBtnSaveDB)
-        self.ui.cmbBatch.currentTextChanged.connect(self.onBatchChanged)
-        self.ui.wBatch.visible = False
+        self.ui.cmbGroupByKey.currentTextChanged.connect(self.onGroupByKeyChanged)
+        self.ui.wGroupByKey.visible = False
 
         if self.CONFIG_PATH:
             self.ui.lblConfig.visible = False
@@ -1624,7 +1619,7 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
 
         try:
             self.logic.initializeStudy()
-            self._batch_filter = None
+            self._group_filter = None
             self._setup_batch_combo()
             self.show_specimen_table()
         except Exception as e:
@@ -1633,28 +1628,28 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
             traceback.print_exc()
 
     def _setup_batch_combo(self):
-        """Show/hide the batch-select row and (re)populate its combo box from cfg.batch_mode, based on the just-initialized specimen list."""
-        bm_cfg = self.logic.cfg.batch_mode
-        self.ui.wBatch.visible = bool(bm_cfg.enabled)
-        if not bm_cfg.enabled:
+        """Show/hide the group-select row and (re)populate its combo box from cfg.group_by_key, based on the just-initialized specimen list."""
+        gbk_cfg = self.logic.cfg.group_by_key
+        self.ui.wGroupByKey.visible = bool(gbk_cfg.enabled)
+        if not gbk_cfg.enabled:
             return
-        values = self.logic.batch_values()
-        self.ui.cmbBatch.blockSignals(True)
-        self.ui.cmbBatch.clear()
-        self.ui.cmbBatch.addItem("(all)")
+        values = self.logic.group_by_key_values()
+        self.ui.cmbGroupByKey.blockSignals(True)
+        self.ui.cmbGroupByKey.clear()
+        self.ui.cmbGroupByKey.addItem("(all)")
         for v in values:
-            self.ui.cmbBatch.addItem(v)
-        self.ui.cmbBatch.blockSignals(False)
+            self.ui.cmbGroupByKey.addItem(v)
+        self.ui.cmbGroupByKey.blockSignals(False)
 
-    def onBatchChanged(self, text):
+    def onGroupByKeyChanged(self, text):
         """Re-filter the specimen table by the newly selected batch value. Refuses (and reverts the combo back) while a specimen is currently active."""
         if self.logic.hasActiveSpecimen:
-            slicer.util.errorDisplay("Close the active specimen before switching batch.")
-            self.ui.cmbBatch.blockSignals(True)
-            self.ui.cmbBatch.currentText = self._batch_filter or "(all)"
-            self.ui.cmbBatch.blockSignals(False)
+            slicer.util.errorDisplay("Close the active specimen before switching group.")
+            self.ui.cmbGroupByKey.blockSignals(True)
+            self.ui.cmbGroupByKey.currentText = self._group_filter or "(all)"
+            self.ui.cmbGroupByKey.blockSignals(False)
             return
-        self._batch_filter = None if text == "(all)" else text
+        self._group_filter = None if text == "(all)" else text
         self.show_specimen_table()
 
     def show_specimen_table(self):
@@ -1666,9 +1661,9 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         cfg = self.logic.cfg
         columns = cfg.table_columns
         keys = sorted(self.logic.specimens.keys())
-        if self._batch_filter is not None and cfg.batch_mode.enabled:
-            col = cfg.batch_mode.column
-            keys = [k for k in keys if self.logic.specimens[k].db_info.get(col, "") == self._batch_filter]
+        if self._group_filter is not None and cfg.group_by_key.enabled:
+            col = cfg.group_by_key.column
+            keys = [k for k in keys if self.logic.specimens[k].db_info.get(col, "") == self._group_filter]
         self._displayed_keys = keys
 
         tbl = self.ui.tblSpecimens

@@ -14,7 +14,7 @@
     "done"
   ],
   "output_dir_pattern": "segmentations/{software}/{accession}",
-  "batch_mode": {
+  "group_by_key": {
     "enabled": true,
     "column": "software"
   },
@@ -140,6 +140,7 @@
     "export_segments": true,
     "export_markups": false,
     "compute_stats": true,
+    "landmarks_report": false,
     "reference_image": "native",
     "segments_filter": [
       "liver",

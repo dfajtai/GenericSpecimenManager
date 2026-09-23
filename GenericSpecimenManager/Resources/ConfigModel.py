@@ -401,21 +401,21 @@ class BatchExportConfig:
 
 
 @dataclass
-class BatchModeConfig:
+class GroupByKeyConfig:
     """Optional filtering of specimens by a database.csv column (e.g. "batch"),
     for the MAIN MODULE'S interactive specimen table only. When enabled,
-    the GUI shows a batch-select combo box after Initialize Study,
-    re-filtering the specimen table to the selected batch value. This is
+    the GUI shows a group-select combo box after Initialize Study,
+    re-filtering the specimen table to the selected value. This is
     purely a viewing convenience - batch_export's own output_dir_pattern/
-    stats_output_path can reference any database.csv column directly
-    (including this one, by name), with no dependency on this section at
-    all."""
+    stats_output_path/landmarks_output_path can reference any database.csv
+    column directly (including this one, by name), with no dependency on
+    this section at all."""
     enabled: bool = False
     column: Optional[str] = None             # database.csv column to group/filter by
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):
-        """Build BatchModeConfig from the config's 'batch_mode' block."""
+        """Build GroupByKeyConfig from the config's 'group_by_key' block."""
         return _from_dict(cls, d or {})
 
 
@@ -490,7 +490,7 @@ class StudyConfig:
     workspace: WorkspaceConfig = field(default_factory=WorkspaceConfig)
     batch_export: BatchExportConfig = field(default_factory=BatchExportConfig)
     segment_editor: SegmentEditorConfig = field(default_factory=SegmentEditorConfig)
-    batch_mode: BatchModeConfig = field(default_factory=BatchModeConfig)
+    group_by_key: GroupByKeyConfig = field(default_factory=GroupByKeyConfig)
 
     @classmethod
     def from_dict(cls, raw: Optional[dict], base_dir: str = "."):
@@ -520,7 +520,7 @@ class StudyConfig:
             workspace=WorkspaceConfig.from_dict(raw.get("workspace")),
             batch_export=BatchExportConfig.from_dict(raw.get("batch_export")),
             segment_editor=SegmentEditorConfig.from_dict(raw.get("segment_editor")),
-            batch_mode=BatchModeConfig.from_dict(raw.get("batch_mode")),
+            group_by_key=GroupByKeyConfig.from_dict(raw.get("group_by_key")),
         )
 
 

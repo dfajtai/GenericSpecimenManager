@@ -72,7 +72,7 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
 
 - **Section dataclasses** (`StudyConfig`, `SegmentationConfig`,
   `LandmarksConfig`, `GlobalWindowLevelConfig`, `BatchExportConfig`,
-  `BatchModeConfig`, `SegmentEditorConfig`, `BrushConfig`,
+  `GroupByKeyConfig`, `SegmentEditorConfig`, `BrushConfig`,
   `DefaultsConfig`) - one meaning, one place in the schema, built once from
   the raw dict (`ClassName.from_dict(...)`).
 - **Override dataclasses** (`ImageConfig`, `SegmentConfig`,
@@ -141,12 +141,13 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
 
   "window_level": { "enabled": false, "min": -150, "max": 700 },  // GLOBAL, applied to every loaded volume
 
-  "batch_mode": { "enabled": true, "column": "batch" },
+  "group_by_key": { "enabled": true, "column": "batch" },
 
   "batch_export": {
     "enabled": true, "export_segments": true, "export_markups": true,
     "reference_image": "mask", "segments_filter": ["liver", "tumor"],
-    "output_dir": "results", "output_dir_pattern": "{batch}/{ID}"   // per-specimen, {column} mechanism
+    "output_dir": "results", "output_dir_pattern": "{batch}/{ID}",  // per-specimen, {column} mechanism
+    "landmarks_report": true, "landmarks_output_path": "{batch}/landmarks.csv"
   },
 
   "segment_editor": {
@@ -181,7 +182,8 @@ workspace/tools around it behave:
 
 | tab | in a sentence |
 |---|---|
-| General | paths, key/table/output-dir columns, batch export |
+| General | paths, key/table/output-dir columns, "Group subjects by key" |
+| Batch export | headless batch run: what to produce, where it goes, and the segment/landmark reports |
 | Images | the images[] table + live merge preview |
 | Segmentation | segments[] table + reference/path pattern |
 | Landmarks | markups file/template config |
@@ -194,10 +196,24 @@ workspace/tools around it behave:
 **General** - Study dir first (set it before browsing the two CSVs below - they
 display relative to whatever it already contains); key/table/output-dir
 columns; "Show CSV columns..." (both CSVs' headers + the columns common to
-both = likely key-column candidates); **Batch export** group box at the bottom
-(enabled, export_segments/markups/compute_stats, reference_image,
-segments_filter, output_dir + output_dir_pattern, plus the fully
-independent compute_stats-only fields).
+both = likely key-column candidates); "Group subjects by key" - a
+main-module-only viewing convenience (a group-select combo after Initialize
+Study), with zero effect on the Batch export tab.
+
+**Batch export** - its own tab (it outgrew a group box inside General).
+"Enable batch export" is the master switch; below it, **Batch export output
+dir** is the base folder everything else on this tab is anchored to. Then
+**Batch operations** (check any combination) - export_segments,
+export_markups (also writes a per-specimen landmarks CSV automatically -
+label/x/y/z, read straight from the live markups node, not re-derived from
+the .mrk.json file's "orientation" field, which is a display-only local
+axis frame, not a per-point transform to apply on top of position),
+Landmark summary (combines every specimen's landmarks into one or more
+CSVs), and Custom segment statistics. **Export settings** (reference_image,
+segments_filter, output_dir_pattern) govern segment + markup export only.
+**Landmark summary settings** and **Segment statistics settings** are each
+their own pattern (see the "Batch mode & batch export" section below for
+exactly how these resolve and group).
 
 **Images** - quick-add table (column name + Add + Labelmap checkbox); the main
 table (name, csv_column, pattern/strip, type, role, required, **Preset**
@@ -438,20 +454,22 @@ study could lose, or misattribute, the open specimen's unsaved work.
 
 ## Batch mode & batch export
 
-With `batch_mode.enabled`, the GUI shows a batch-select combo (`cmbBatch`,
-labeled "Group subjects by key" in the Config Editor) after Initialize
-Study, populated with the unique values of `batch_mode.column` ("(all)"
-plus every value). Switching re-filters the table. **Switching is blocked
-while a specimen is active** - it must be closed first, or export/save
-could get attributed to the wrong row. This toggle is a **main-module
-viewing convenience only** - `batch_export` never depends on it; its own
-`output_dir_pattern`/`stats_output_path` can reference any database.csv
-column directly (including this one, by name).
+With `group_by_key.enabled`, the GUI shows a group-select combo (`cmbGroupByKey`,
+labeled "Group subjects by key" in the Config Editor's General tab) after
+Initialize Study, populated with the unique values of `group_by_key.column`
+("(all)" plus every value). Switching re-filters the table. **Switching is
+blocked while a specimen is active** - it must be closed first, or
+export/save could get attributed to the wrong row. This toggle is a
+**main-module viewing convenience only** - `batch_export` never depends on
+it; its own `output_dir_pattern`/`stats_output_path`/`landmarks_output_path`
+can reference any database.csv column directly (including this one, by
+name).
 
 A single **Batch Export** button runs
 [`BatchProcessor`](GenericSpecimenManager/Resources/BatchProcessor.py)
-against every `done` specimen, driven entirely by `cfg.batch_export`. In
-one pass, any combination of:
+against every `done` specimen, driven entirely by `cfg.batch_export` -
+configured on its own **Batch export** Config Editor tab (it outgrew a
+group box inside General). In one pass, any combination of:
 
 - **export_segments** - each segment exported to its own labelmap file via
   Slicer's native `ExportSegmentsToLabelmapNode` (handles overlapping
@@ -467,10 +485,12 @@ one pass, any combination of:
   `orientation` is a separate, mostly-display-only local axis frame (or,
   at the file level, just the LPS/RAS sign convention) - it is not a
   per-point pose transform to apply on top of `position`.
-  `landmarks_report` (needs `export_markups` also on) additionally
-  combines every specimen's landmarks into one or more CSVs via
-  `landmarks_output_path` - same `{column}` pattern, root-anchoring, and
-  emergent grouping-by-resolved-path as `stats_output_path` below.
+  `landmarks_report` (Config Editor label: "Landmark summary" - needs
+  `export_markups` also on) additionally combines every specimen's
+  landmarks into one or more CSVs via `landmarks_output_path` (Config
+  Editor label: "Landmark summary pattern") - same `{column}` pattern,
+  root-anchoring, and emergent grouping-by-resolved-path as
+  `stats_output_path` below.
 - **compute_stats** - custom per-segment statistics (volume, min, max,
   mean, median, std, and/or `percentile_<N>`), computed from the same
   per-segment labelmap export + `slicer.util.arrayFromVolume()` + plain
@@ -495,7 +515,7 @@ column that varies per specimen (e.g. `{batch}/{ID}`) naturally routes
 different specimens into different subfolders just by being referenced in
 the pattern.
 
-`stats_output_path` (the "batch segment statistics pattern") is also a
+`stats_output_path` (Config Editor label: "Report pattern") is also a
 curly-brace pattern, resolved per specimen; `{date}`/`{time}`/`{datetime}`
 are substituted too, and it defaults to `report.csv`. If relative, it's
 anchored to the SAME shared root (`output_dir` if set, else `study_dir`
@@ -505,7 +525,9 @@ under that root. Grouping into one file or several is entirely emergent:
 specimens that resolve to the same final path share one CSV; specimens
 that resolve to different paths (the pattern references a column whose
 value differs, e.g. `{batch}/report.csv`) end up in separate files instead
-- again, no separate flag.
+- again, no separate flag. `landmarks_output_path` (default
+`landmarks_report.csv`) works identically, independent of
+`stats_output_path` - each has its own file(s) and its own grouping.
 
 Each specimen is loaded through the **lean**
 `GenericSpecimen.load_for_batch()` path - only the segmentation plus at

@@ -29,6 +29,13 @@
       <item>
        <widget class="QWidget" name="widget_0" native="true">
         <layout class="QGridLayout" name="gridLayout_0">
+         <item row="1" column="0">
+          <widget class="QLabel" name="lblConfig">
+           <property name="text">
+            <string>Study config (.json)</string>
+           </property>
+          </widget>
+         </item>
          <item row="2" column="0" colspan="2">
           <widget class="QLineEdit" name="tbConfigPath"/>
          </item>
@@ -36,13 +43,6 @@
           <widget class="QPushButton" name="btnSelectConfig">
            <property name="text">
             <string>Select .json file</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="0">
-          <widget class="QLabel" name="lblConfig">
-           <property name="text">
-            <string>Study config (.json)</string>
            </property>
           </widget>
          </item>
@@ -153,17 +153,17 @@
     </widget>
    </item>
    <item>
-    <widget class="QWidget" name="wBatch" native="true">
+    <widget class="QWidget" name="wGroupByKey" native="true">
      <layout class="QHBoxLayout" name="horizontalLayout_batch">
       <item>
-       <widget class="QLabel" name="lblBatch">
+       <widget class="QLabel" name="lblGroupByKey">
         <property name="text">
-         <string>Batch</string>
+         <string>Group</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QComboBox" name="cmbBatch"/>
+       <widget class="QComboBox" name="cmbGroupByKey"/>
       </item>
      </layout>
     </widget>

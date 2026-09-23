@@ -5,7 +5,7 @@ ConfigEditor
 Standalone Qt window for building/editing a study config.json without hand
 JSON editing. Covers nearly the whole schema:
 
-  General:        paths, key/table/output-dir columns, batch_mode
+  General:        paths, key/table/output-dir columns, group_by_key
   Images:         table (name, csv_column, pattern/strip, type, role,
                    required, preset, opacity, color_table) + per-selected-row
                    "advanced" popup for window_level/threshold/interpolate
@@ -239,6 +239,7 @@ class ConfigEditorDialog(qt.QDialog):
         tabs = qt.QTabWidget()
         outer.addWidget(tabs)
         tabs.addTab(self._build_general_tab(), "General")
+        tabs.addTab(self._build_batch_export_tab(), "Batch export")
         tabs.addTab(self._build_images_tab(), "Images")
         tabs.addTab(self._build_segmentation_tab(), "Segmentation")
         tabs.addTab(self._build_landmarks_tab(), "Landmarks")
@@ -408,23 +409,24 @@ class ConfigEditorDialog(qt.QDialog):
         sep.setFrameShape(qt.QFrame.HLine)
         form.addRow(sep)
 
-        self.chkBatchMode = qt.QCheckBox("Group subjects by key")
-        self.chkBatchMode.setToolTip(
+        self.chkGroupByKey = qt.QCheckBox("Group subjects by key")
+        self.chkGroupByKey.setToolTip(
             "Shows a group-select combo in the main module after Initialize Study, to browse/filter "
             "the specimen table by the key column below. This is purely a main-module VIEWING "
-            "convenience - it does NOT affect Batch Export below, which only needs the Group-by key "
-            "set (see that section's 'Per-batch operation').")
-        form.addRow(self.chkBatchMode)
-        self.batchColumnEdit = qt.QLineEdit()
-        self.batchColumnEdit.setPlaceholderText("database.csv column to group/filter by, e.g. batch")
-        form.addRow("Group by key:", self.batchColumnEdit)
+            "convenience - it does NOT affect the Batch Export tab, which only needs the Group-by "
+            "key set (its Export dir pattern/Report pattern/Landmark summary pattern fields can "
+            "reference it directly).")
+        form.addRow(self.chkGroupByKey)
+        self.groupByKeyColumnEdit = qt.QLineEdit()
+        self.groupByKeyColumnEdit.setPlaceholderText("database.csv column to group/filter by, e.g. batch")
+        form.addRow("Group by key:", self.groupByKeyColumnEdit)
 
-        sep2 = qt.QFrame()
-        sep2.setFrameShape(qt.QFrame.HLine)
-        form.addRow(sep2)
+        return w
 
-        beGroup = qt.QGroupBox("Batch export")
-        beForm = qt.QFormLayout(beGroup)
+    def _build_batch_export_tab(self):
+        """Batch Export - runs once, against every specimen marked 'done', in one pass, without opening the interactive viewer for each one. Split into its own tab since it had grown too large to sit comfortably inside General."""
+        w = qt.QWidget()
+        beForm = qt.QFormLayout(w)
 
         self.chkBeEnabled = qt.QCheckBox("Enable batch export")
         self.chkBeEnabled.setToolTip(
@@ -439,7 +441,7 @@ class ConfigEditorDialog(qt.QDialog):
         self.beOutputDirEdit, beOutputDirRow = self._file_row(directory=True)
         self.beOutputDirEdit.setToolTip(
             "The base folder for this whole batch run - EVERYTHING below (segment files, markup "
-            "files, and the report) is ultimately anchored to this. Empty -> study_dir. Relative -> "
+            "files, and the reports) is ultimately anchored to this. Empty -> study_dir. Relative -> "
             "resolved under study_dir. Absolute -> used exactly as given.")
         beForm.addRow("Batch export output dir:", beOutputDirRow)
         self._beChildWidgets.append(beOutputDirRow)
@@ -464,11 +466,11 @@ class ConfigEditorDialog(qt.QDialog):
             "overlapping segments correctly) - every 'done' specimen's rows go into a combined CSV. "
             "Configured in the 'Segment statistics settings' group further down.")
         producesRow.addWidget(self.chkBeComputeStats)
-        self.chkBeLandmarksReport = qt.QCheckBox("Landmarks report")
+        self.chkBeLandmarksReport = qt.QCheckBox("Landmark summary")
         self.chkBeLandmarksReport.setToolTip(
             "Needs Export markups above also checked. In addition to the automatic per-specimen "
             "landmarks CSV, combines every specimen's landmarks into one or more CSVs (one row per "
-            "landmark, key columns prepended) - configured in 'Landmarks report settings' further "
+            "landmark, key columns prepended) - configured in 'Landmark summary settings' further "
             "down.")
         producesRow.addWidget(self.chkBeLandmarksReport)
         producesRow.addStretch(1)
@@ -511,21 +513,38 @@ class ConfigEditorDialog(qt.QDialog):
         self.beOutputDirPatternEdit.setPlaceholderText("e.g. {ID}/{measurement}")
         self.beOutputDirPatternEdit.setToolTip(
             "Curly-brace pattern joined onto the output dir above, resolved separately for each "
-            "specimen - the SAME mechanism as this tab's own Output dir pattern (any key/database.csv/preseg.csv "
-            "column in {braces}). Leave empty to default the same way that one does too (your key "
-            "columns, joined). A database column that varies per specimen - e.g. a \"batch\" column - "
-            "naturally routes different specimens into different subfolders just by being referenced "
-            "here, e.g. {batch}/{ID} - no separate on/off switch needed for that.")
+            "specimen - the SAME mechanism as the General tab's own Output dir pattern (any "
+            "key/database.csv/preseg.csv column in {braces}). Leave empty to default the same way "
+            "that one does too (your key columns, joined). A database column that varies per "
+            "specimen - e.g. a \"batch\" column - naturally routes different specimens into "
+            "different subfolders just by being referenced here, e.g. {batch}/{ID} - no separate "
+            "on/off switch needed for that.")
         beForm.addRow("Export dir pattern:", self.beOutputDirPatternEdit)
         self._beChildWidgets.append(self.beOutputDirPatternEdit)
+
+        lmSep = qt.QFrame()
+        lmSep.setFrameShape(qt.QFrame.HLine)
+        beForm.addRow(lmSep)
+        beForm.addRow(qt.QLabel(
+            "<b>Landmark summary settings</b> - only used when \"Landmark summary\" above is "
+            "checked; needs Export markups checked too:"))
+        self.landmarksOutputPathEdit = qt.QLineEdit()
+        self.landmarksOutputPathEdit.setPlaceholderText("landmarks_report.csv")
+        self.landmarksOutputPathEdit.setToolTip(
+            "Curly-brace pattern (same {column} mechanism as the export dir pattern above), "
+            "resolved separately for each specimen. If relative, anchored to Batch export output "
+            "dir above - or study_dir directly if that's empty - never nested through the export "
+            "dir pattern. \"{date}\"/\"{time}\"/\"{datetime}\" also substituted if present. "
+            "Specimens that resolve to the SAME final path share one CSV; referencing a column "
+            "that varies (e.g. \"{batch}/landmarks.csv\") naturally splits those specimens into "
+            "separate files instead. Leave empty to default to landmarks_report.csv.")
+        beForm.addRow("Landmark summary pattern:", self.landmarksOutputPathEdit)
+        self._beChildWidgets.append(self.landmarksOutputPathEdit)
 
         statsSep = qt.QFrame()
         statsSep.setFrameShape(qt.QFrame.HLine)
         beForm.addRow(statsSep)
-        beForm.addRow(qt.QLabel(
-            "<b>Segment statistics settings</b> - only used when \"Custom segment statistics\" "
-            "above is checked; shares the same output-dir root as the export settings above, but "
-            "never goes through the output dir pattern:"))
+        beForm.addRow(qt.QLabel("<b>Segment statistics settings</b>:"))
 
         statsRefRow = qt.QHBoxLayout()
         self.statsReferenceImagesEdit = qt.QLineEdit()
@@ -562,9 +581,9 @@ class ConfigEditorDialog(qt.QDialog):
         self.statsOutputPathEdit.setPlaceholderText("report.csv")
         self.statsOutputPathEdit.setToolTip(
             "Curly-brace pattern, resolved separately for each specimen (same {column} mechanism as "
-            "the output dir pattern above). If relative, anchored to Batch export output dir above "
+            "the export dir pattern above). If relative, anchored to Batch export output dir above "
             "(the SAME root segment/markup files use) - or to study_dir directly if that's empty - "
-            "but, unlike segment/markup files, NEVER nested through the output dir pattern; this is "
+            "but, unlike segment/markup files, NEVER nested through the export dir pattern; this is "
             "its own separate path straight under that root. \"{date}\" (YYYY-MM-DD), \"{time}\" "
             "(HH-MM-SS), and/or \"{datetime}\" (YYYY-MM-DD_HH-MM-SS) are also substituted if present. "
             "Specimens that resolve to the SAME final path share one CSV; referencing a column that "
@@ -574,29 +593,10 @@ class ConfigEditorDialog(qt.QDialog):
         beForm.addRow("Report pattern:", self.statsOutputPathEdit)
         self._beChildWidgets.append(self.statsOutputPathEdit)
 
-        lmSep = qt.QFrame()
-        lmSep.setFrameShape(qt.QFrame.HLine)
-        beForm.addRow(lmSep)
-        beForm.addRow(qt.QLabel(
-            "<b>Landmarks report settings</b> - only used when \"Landmarks report\" above is "
-            "checked; needs Export markups checked too:"))
-        self.landmarksOutputPathEdit = qt.QLineEdit()
-        self.landmarksOutputPathEdit.setPlaceholderText("landmarks_report.csv")
-        self.landmarksOutputPathEdit.setToolTip(
-            "Curly-brace pattern (same {column} mechanism as the export dir pattern above), "
-            "resolved separately for each specimen. If relative, anchored to Batch export output "
-            "dir above - or study_dir directly if that's empty - never nested through the export "
-            "dir pattern. \"{date}\"/\"{time}\"/\"{datetime}\" also substituted if present. "
-            "Specimens that resolve to the SAME final path share one CSV; referencing a column "
-            "that varies (e.g. \"{batch}/landmarks.csv\") naturally splits those specimens into "
-            "separate files instead. Leave empty to default to landmarks_report.csv.")
-        beForm.addRow("Landmarks report pattern:", self.landmarksOutputPathEdit)
-        self._beChildWidgets.append(self.landmarksOutputPathEdit)
-
-        form.addRow(beGroup)
         self._onBeEnabledToggled(self.chkBeEnabled.checked)
 
         return w
+
 
     def _resolve_csv_path(self, text):
         """Resolve a (possibly study-dir-relative) path field to a real
@@ -1613,10 +1613,11 @@ class ConfigEditorDialog(qt.QDialog):
         sectionCombo = qt.QComboBox()
         # (label, anchor) pairs - anchor ids match the <a name="..."> tags in help_cheatsheet.html
         sections = [
-            ("Workflow", "workflow"), ("General", "general"), ("Images", "images"),
-            ("Segmentation", "segmentation"), ("Landmarks", "landmarks"), ("Workspace", "workspace"),
-            ("Segment editor", "segment-editor"), ("Volume rendering", "volume-rendering"),
-            ("Defaults / Presets", "defaults-presets"), ("Manual edit config", "manual-edit-config"),
+            ("Workflow", "workflow"), ("General", "general"), ("Batch export", "batch-export"),
+            ("Images", "images"), ("Segmentation", "segmentation"), ("Landmarks", "landmarks"),
+            ("Workspace", "workspace"), ("Segment editor", "segment-editor"),
+            ("Volume rendering", "volume-rendering"), ("Defaults / Presets", "defaults-presets"),
+            ("Manual edit config", "manual-edit-config"),
         ]
         for label, _anchor in sections:
             sectionCombo.addItem(label)
@@ -1717,7 +1718,7 @@ class ConfigEditorDialog(qt.QDialog):
         self.quickColumnsTable.setRowCount(0)
         self.vrTable.setRowCount(0)
         for edit in (self.presegEdit, self.dbEdit, self.studyDirEdit, self.keyColumnsEdit,
-                     self.tableColumnsEdit, self.outputDirPatternEdit, self.batchColumnEdit,
+                     self.tableColumnsEdit, self.outputDirPatternEdit, self.groupByKeyColumnEdit,
                      self.segReferenceImageEdit, self.segPathPatternEdit,
                      self.lmCsvColumnEdit, self.lmPathPatternEdit, self.lmTemplateEdit, self.lmColorEdit,
                      self.wlMinEdit, self.wlMaxEdit,
@@ -1730,7 +1731,7 @@ class ConfigEditorDialog(qt.QDialog):
         self.beReferenceImageEdit.clear()
         self.doneColumnEdit.text = "done"
         self.segOutputFilenameEdit.text = "segment.seg.nrrd"
-        for chk in (self.chkBatchMode, self.chkSegEnabled, self.chkLmEnabled,
+        for chk in (self.chkGroupByKey, self.chkSegEnabled, self.chkLmEnabled,
                     self.chkWlEnabled, self.chkSliceRotationEnabled, self.chkBeEnabled, self.chkBeExportSegments,
                     self.chkBeExportMarkups, self.chkBeComputeStats, self.chkBeLandmarksReport):
             chk.checked = False
@@ -1823,9 +1824,9 @@ class ConfigEditorDialog(qt.QDialog):
         self.tableColumnsEdit.text = ",".join(cfg.get("table_columns", []))
         self.outputDirPatternEdit.text = cfg.get("output_dir_pattern", "") or ""
 
-        bm = cfg.get("batch_mode", {}) or {}
-        self.chkBatchMode.checked = bool(bm.get("enabled"))
-        self.batchColumnEdit.text = bm.get("column", "") or ""
+        gbk = cfg.get("group_by_key", {}) or {}
+        self.chkGroupByKey.checked = bool(gbk.get("enabled"))
+        self.groupByKeyColumnEdit.text = gbk.get("column", "") or ""
 
         # defaults/presets loaded BEFORE the images loop below, so each row's
         # Preset dropdown is populated with the right choices as it's created
@@ -2014,8 +2015,8 @@ class ConfigEditorDialog(qt.QDialog):
         if out_pattern:
             cfg["output_dir_pattern"] = out_pattern
 
-        if self.chkBatchMode.checked:
-            cfg["batch_mode"] = {"enabled": True, "column": self.batchColumnEdit.text.strip()}
+        if self.chkGroupByKey.checked:
+            cfg["group_by_key"] = {"enabled": True, "column": self.groupByKeyColumnEdit.text.strip()}
 
         images = self._read_image_rows()
         if images:
