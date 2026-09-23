@@ -146,7 +146,7 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
   "batch_export": {
     "enabled": true, "export_segments": true, "export_markups": true,
     "reference_image": "mask", "segments_filter": ["liver", "tumor"],
-    "output_dir": "results", "per_batch_operation": true   // only needs batch_mode.column set
+    "output_dir": "results", "output_dir_pattern": "{batch}/{ID}"   // per-specimen, {column} mechanism
   },
 
   "segment_editor": {
@@ -196,8 +196,8 @@ display relative to whatever it already contains); key/table/output-dir
 columns; "Show CSV columns..." (both CSVs' headers + the columns common to
 both = likely key-column candidates); **Batch export** group box at the bottom
 (enabled, export_segments/markups/compute_stats, reference_image,
-segments_filter, output_dir, per_batch_operation, plus the
-compute_stats-only fields).
+segments_filter, output_dir + output_dir_pattern, plus the fully
+independent compute_stats-only fields).
 
 **Images** - quick-add table (column name + Add + Labelmap checkbox); the main
 table (name, csv_column, pattern/strip, type, role, required, **Preset**
@@ -439,12 +439,14 @@ study could lose, or misattribute, the open specimen's unsaved work.
 ## Batch mode & batch export
 
 With `batch_mode.enabled`, the GUI shows a batch-select combo (`cmbBatch`,
-labeled "Filter subjects by batches" in the Config Editor) after Initialize
+labeled "Group subjects by key" in the Config Editor) after Initialize
 Study, populated with the unique values of `batch_mode.column` ("(all)"
 plus every value). Switching re-filters the table. **Switching is blocked
 while a specimen is active** - it must be closed first, or export/save
 could get attributed to the wrong row. This toggle is a **main-module
-viewing convenience only** - it has no effect on Batch Export below.
+viewing convenience only** - `batch_export` never depends on it; its own
+`output_dir_pattern`/`stats_output_path` can reference any database.csv
+column directly (including this one, by name).
 
 A single **Batch Export** button runs
 [`BatchProcessor`](GenericSpecimenManager/Resources/BatchProcessor.py)
@@ -455,7 +457,20 @@ one pass, any combination of:
   Slicer's native `ExportSegmentsToLabelmapNode` (handles overlapping
   segments correctly - each segment gets its own independently-exported
   mask, never a shared multi-label array to misinterpret)
-- **export_markups** - the markups file
+- **export_markups** - the markups `.mrk.json` file, plus a per-specimen
+  landmarks CSV (`label`, `x`, `y`, `z` - world/RAS position) written
+  automatically alongside it, read straight from the live markups node via
+  `GetNthControlPointLabel()`/`GetNthControlPointPositionWorld()`. This is
+  deliberately *not* re-parsing the raw `.mrk.json` file and multiplying
+  its `orientation` field into `position` - in Slicer's markups schema,
+  `position` is already the point's full world coordinate, and
+  `orientation` is a separate, mostly-display-only local axis frame (or,
+  at the file level, just the LPS/RAS sign convention) - it is not a
+  per-point pose transform to apply on top of `position`.
+  `landmarks_report` (needs `export_markups` also on) additionally
+  combines every specimen's landmarks into one or more CSVs via
+  `landmarks_output_path` - same `{column}` pattern, root-anchoring, and
+  emergent grouping-by-resolved-path as `stats_output_path` below.
 - **compute_stats** - custom per-segment statistics (volume, min, max,
   mean, median, std, and/or `percentile_<N>`), computed from the same
   per-segment labelmap export + `slicer.util.arrayFromVolume()` + plain
@@ -469,17 +484,28 @@ one pass, any combination of:
   Config Editor; leave it unset to use
   [`Definitions.DEFAULT_STATS_METRICS`](GenericSpecimenManager/Resources/Definitions.py).
 
-`output_dir` is a plain literal folder (study_dir-relative unless
-absolute - **not** a per-specimen `{ID}`-style pattern; that's what
-`output_dir_pattern` is for), optionally containing a literal `{batch}`
-placeholder. **`per_batch_operation`** splits EVERYTHING this run
-produces - segment files, markup files, *and* the stats CSV(s) - by
-`batch_mode.column`'s value: one `output_dir/<batch value>/...` subfolder
-per batch for files, one CSV per batch for statistics (`{batch}`
-substituted in `stats_output_path` if present, or auto-inserted before the
-extension otherwise, so per-batch files never collide). This only needs
-`batch_mode.column` to be **set** - it's deliberately independent of
-`batch_mode.enabled`, which is purely the interactive filter combo above.
+`output_dir` (optional root: unset -> `study_dir`; relative -> resolved
+under `study_dir`; absolute -> used as-is) + `output_dir_pattern` (a
+curly-brace pattern resolved **per specimen**, joined onto that root -
+the exact same `{column}` mechanism as the top-level `output_dir_pattern`,
+any key/database.csv/preseg.csv column; unset defaults the same way too,
+joining the key columns) together govern **segment and markup export
+only**. There's no separate on/off flag for "split by batch" - a database
+column that varies per specimen (e.g. `{batch}/{ID}`) naturally routes
+different specimens into different subfolders just by being referenced in
+the pattern.
+
+`stats_output_path` (the "batch segment statistics pattern") is also a
+curly-brace pattern, resolved per specimen; `{date}`/`{time}`/`{datetime}`
+are substituted too, and it defaults to `report.csv`. If relative, it's
+anchored to the SAME shared root (`output_dir` if set, else `study_dir`
+directly) segment/markup files use - but, unlike those, it's **never
+nested through `output_dir_pattern`**; it's its own separate path right
+under that root. Grouping into one file or several is entirely emergent:
+specimens that resolve to the same final path share one CSV; specimens
+that resolve to different paths (the pattern references a column whose
+value differs, e.g. `{batch}/report.csv`) end up in separate files instead
+- again, no separate flag.
 
 Each specimen is loaded through the **lean**
 `GenericSpecimen.load_for_batch()` path - only the segmentation plus at

@@ -20,7 +20,7 @@ from Resources.Definitions import DEFAULT_STATS_METRICS
 class BatchProcessor:
     """Runs cfg.batch_export's work for every 'done' specimen, in ONE pass:
     export segment labelmaps to files, export markups, and/or compute
-    custom per-segment statistics into one combined CSV - any combination,
+    custom per-segment statistics into one or more CSVs - any combination,
     driven entirely by cfg.batch_export. No GUI involved - callable
     standalone from the Python console with just a Logic instance
     (`BatchProcessor(logic).run()`).
@@ -39,16 +39,27 @@ class BatchProcessor:
     never the full configured image set), which also skips workspace
     settings, volume rendering, and Segment Editor activation entirely -
     none of that is needed for a headless batch run, and skipping it is
-    most of the speedup over the interactive load()."""
+    most of the speedup over the interactive load().
+
+    No separate "per-batch" flag anywhere: cfg.batch_export.output_dir_pattern
+    and .stats_output_path are curly-brace patterns resolved PER SPECIMEN
+    (the same {column} mechanism as the General tab's own
+    output_dir_pattern - any key/database.csv/preseg.csv column, e.g. a
+    "batch" column, works simply by being referenced in the pattern).
+    Grouping for the stats CSV is entirely emergent: specimens that
+    resolve to the same final path share one file; specimens that resolve
+    to different paths (because the pattern references a column whose
+    value differs) naturally end up in separate files instead."""
 
     def __init__(self, logic):
         self.logic = logic
         self.cfg = logic.cfg
         self.be_cfg = logic.cfg.batch_export
-        self.stats_rows = []   # populated during run() if compute_stats is on
+        self.stats_rows = []       # populated during run() if compute_stats is on
+        self.landmark_rows = []    # populated during run() if export_markups and landmarks_report are both on
 
     def run(self):
-        """Entry point: validates config, then iterates every 'done' specimen doing whichever of export_segments/export_markups/compute_stats is enabled, and finally writes the combined stats CSV if compute_stats was on."""
+        """Entry point: validates config, then iterates every 'done' specimen doing whichever of export_segments/export_markups/compute_stats is enabled, and finally writes the stats CSV(s) if compute_stats was on."""
         if self.logic.hasActiveSpecimen:
             logger.warning("[BatchProcessor] please close the active specimen before running a batch export.")
             return
@@ -73,11 +84,6 @@ class BatchProcessor:
         self.logic.initializeStudy()
         cfg = self.cfg
         done_col = cfg.done_column
-        # per_batch: splits everything (segment/markup files AND stats CSVs) by batch_mode.column's
-        # value. Only needs that column to be SET - deliberately independent of batch_mode.enabled,
-        # which only controls the interactive specimen-table filter combo in the main GUI and has
-        # no bearing on batch export/stats behavior.
-        per_batch = bool(cfg.batch_mode.column) and be_cfg.per_batch_operation
         # geo_ref_name: single geometry reference for the segment export itself (ExportSegmentsToLabelmapNode
         # needs exactly one reference grid). stats_ref_names: one or more images to SAMPLE intensities from -
         # each produces its own stats row per segment; falls back to [geo_ref_name] if unset.
@@ -85,6 +91,7 @@ class BatchProcessor:
         stats_ref_names = be_cfg.stats_reference_images or ([geo_ref_name] if geo_ref_name else [])
         need_ref_image = bool(be_cfg.export_segments or be_cfg.compute_stats)
         self.stats_rows = []
+        self.landmark_rows = []
 
         # Snapshot every ColorTableNode already in the scene before we touch anything - Slicer's
         # own ExportSegmentsToLabelmapNode auto-creates a fresh display node + color table for
@@ -117,13 +124,15 @@ class BatchProcessor:
                     continue
                 slicer.mrmlScene.StartState(slicer.mrmlScene.BatchProcessState)
                 try:
-                    self._process_one(specimen, key, geo_ref_name, stats_ref_names, need_ref_image, per_batch)
+                    self._process_one(specimen, key, geo_ref_name, stats_ref_names, need_ref_image)
                 finally:
                     slicer.mrmlScene.EndState(slicer.mrmlScene.BatchProcessState)
                 gc.collect()   # drop any lingering Python-side references to just-removed nodes
 
             if be_cfg.compute_stats:
-                self._write_stats_csv(per_batch)
+                self._write_stats_csv()
+            if be_cfg.export_markups and be_cfg.landmarks_report:
+                self._write_landmarks_report()
         finally:
             try:
                 import qt
@@ -131,9 +140,8 @@ class BatchProcessor:
             except Exception:
                 _restore_warning_display()
 
-    def _process_one(self, specimen, key, geo_ref_name, stats_ref_names, need_ref_image, per_batch):
+    def _process_one(self, specimen, key, geo_ref_name, stats_ref_names, need_ref_image):
         """Lean-load one specimen, export/compute whatever's enabled for it, then close it again."""
-        cfg = self.cfg
         be_cfg = self.be_cfg
 
         image_names = sorted(set(([geo_ref_name] if geo_ref_name else []) + (stats_ref_names or []))) \
@@ -146,11 +154,11 @@ class BatchProcessor:
             self.logic.close_active_specimen(no_question=True)
             return
 
-        batch_val = specimen.batch_value() if per_batch else None
-        out_dir = self._resolve_output_dir(specimen, batch_val)
+        out_dir = self._resolve_output_dir(specimen)
+        stats_path = self._resolve_stats_output_path(specimen) if be_cfg.compute_stats else None
 
         if (be_cfg.export_segments or be_cfg.compute_stats) and specimen.segmentation_node is not None:
-            self._process_segments(specimen, geo_ref_node, stats_ref_names, out_dir, batch_val)
+            self._process_segments(specimen, geo_ref_node, stats_ref_names, out_dir, stats_path)
 
         if be_cfg.export_markups and specimen.markups_node is not None:
             if not os.path.isdir(out_dir):
@@ -163,35 +171,178 @@ class BatchProcessor:
             logger.info(f"[BatchProcessor] saved {out_file}")
             slicer.mrmlScene.RemoveNode(storage)
 
+            landmark_rows = self._extract_landmark_rows(specimen)
+            self._export_landmarks_csv(specimen, out_dir, landmark_rows)
+            if be_cfg.landmarks_report:
+                lm_path = self._resolve_landmarks_output_path(specimen)
+                for row in landmark_rows:
+                    tagged = dict(zip(self.cfg.key_columns, specimen.key_values))
+                    tagged.update(row)
+                    tagged["_lm_path"] = lm_path
+                    self.landmark_rows.append(tagged)
+
         self.logic.close_active_specimen(no_question=True)
 
-    def _resolve_output_dir(self, specimen, batch_val):
-        """Resolve batch_export.output_dir - a PLAIN literal folder path,
-        study_dir-relative unless absolute (no per-specimen {ID}-style
-        placeholders here; that's what output_dir_pattern/out_dir is for).
-        May contain a literal "{batch}" placeholder, substituted with the
-        specimen's batch_mode.column value when per-batch grouping is on
-        (batch_val is not None); if per-batch is on and output_dir doesn't
-        mention "{batch}" at all, a "/<batch value>" suffix is appended
-        automatically so files from different batches never collide.
-        Falls back to the specimen's own out_dir (built from
-        output_dir_pattern) when output_dir itself is unset."""
-        base_dir = self.be_cfg.output_dir
-        batch_str = str(batch_val) if batch_val else "unknown"
-        if base_dir:
-            if "{batch}" in base_dir:
-                base_dir = base_dir.replace("{batch}", batch_str)
-            elif batch_val is not None:
-                base_dir = os.path.join(base_dir, batch_str)
-            if not os.path.isabs(base_dir):
-                base_dir = os.path.join(self.logic.study_dir, base_dir)
-            return base_dir
-        out_dir = specimen.out_dir
-        if batch_val is not None:
-            out_dir = os.path.join(out_dir, batch_str)
-        return out_dir
+    def _extract_landmark_rows(self, specimen):
+        """Read every DEFINED control point straight from the live, already-loaded markups node -
+        label + world position (RAS) via Slicer's own GetNthControlPointLabel()/
+        GetNthControlPointPositionWorld(). This is deliberately NOT parsing the raw .mrk.json file
+        and multiplying "orientation" into "position" - in Slicer's markups schema, position is
+        already the point's full world coordinate, and orientation is a separate, mostly-display-
+        only local axis frame (or, at the file level, just the LPS/RAS sign convention) - it is not
+        a per-point pose transform to apply on top of position. Reading through the live node's own
+        API sidesteps that distinction entirely and is guaranteed correct for whatever coordinate
+        system Slicer already resolved the point into."""
+        node = specimen.markups_node
+        rows = []
+        try:
+            n = node.GetNumberOfControlPoints()
+        except Exception:
+            return rows
+        for i in range(n):
+            try:
+                if hasattr(node, "GetNthControlPointPositionStatus") and hasattr(node, "PositionUndefined"):
+                    if node.GetNthControlPointPositionStatus(i) == node.PositionUndefined:
+                        continue
+            except Exception:
+                pass   # status check itself failing shouldn't drop a point - include it defensively
+            label = node.GetNthControlPointLabel(i)
+            pos = [0.0, 0.0, 0.0]
+            node.GetNthControlPointPositionWorld(i, pos)
+            rows.append({"label": label, "x": pos[0], "y": pos[1], "z": pos[2]})
+        return rows
 
-    def _process_segments(self, specimen, geo_ref_node, stats_ref_names, out_dir, batch_val):
+    def _export_landmarks_csv(self, specimen, out_dir, rows):
+        """Write this specimen's own landmarks to a per-specimen CSV (label, x, y, z) alongside its
+        .mrk.json - written automatically whenever export_markups is on, independent of the
+        landmarks_report flag (which only controls the additional COMBINED multi-specimen report)."""
+        if not rows:
+            return
+        import csv
+        out_file = os.path.join(out_dir, f"{specimen.label}-landmarks.csv")
+        with open(out_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["label", "x", "y", "z"])
+            writer.writeheader()
+            writer.writerows(rows)
+        logger.info(f"[BatchProcessor] saved {out_file}")
+
+    def _resolve_landmarks_output_path(self, specimen):
+        """Resolve batch_export.landmarks_output_path (the "landmarks report pattern") for THIS
+        specimen - same {column}/{date}/{time}/{datetime} mechanism, same root-anchoring, and same
+        emergent per-resolved-path grouping as _resolve_stats_output_path(). Defaults to
+        "landmarks_report.csv"."""
+        import datetime
+        out_path = self.be_cfg.landmarks_output_path or "landmarks_report.csv"
+        if "{date}" in out_path:
+            out_path = out_path.replace("{date}", datetime.date.today().isoformat())
+        if "{time}" in out_path:
+            out_path = out_path.replace("{time}", datetime.datetime.now().strftime("%H-%M-%S"))
+        if "{datetime}" in out_path:
+            out_path = out_path.replace("{datetime}", datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+        out_path = out_path.format(**specimen._context())
+        if os.path.isabs(out_path):
+            return out_path
+        return os.path.join(self._resolve_root(), out_path)
+
+    def _write_landmarks_report(self):
+        """Write self.landmark_rows to one or more CSVs, grouped purely by each row's already-
+        resolved "_lm_path" (see _resolve_landmarks_output_path()) - specimens that resolved to the
+        same path share one file, specimens that resolved to different paths get separate files.
+        Each file's rows are sorted by key columns then label."""
+        import csv
+        if not self.landmark_rows:
+            logger.warning("[BatchProcessor] landmarks_report enabled but no landmark rows produced (no defined control points in any 'done' specimen's markups).")
+            return
+
+        key_cols = list(self.cfg.key_columns)
+        fieldnames = key_cols + ["label", "x", "y", "z"]
+
+        groups = {}
+        for row in self.landmark_rows:
+            groups.setdefault(row["_lm_path"], []).append(row)
+
+        written_paths = []
+        total_rows = 0
+        for out_path, rows in groups.items():
+            rows_sorted = sorted(rows, key=lambda r: tuple(str(r[c]) for c in key_cols) + (str(r["label"]),))
+            out_dir = os.path.dirname(out_path)
+            if out_dir and not os.path.isdir(out_dir):
+                os.makedirs(out_dir, exist_ok=True)
+            with open(out_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(rows_sorted)
+            logger.info(f"[BatchProcessor] wrote {len(rows_sorted)} landmark row(s) -> {out_path}")
+            written_paths.append(out_path)
+            total_rows += len(rows_sorted)
+
+        n_specimens = len(set(tuple(r[c] for c in key_cols) for r in self.landmark_rows))
+        dialog_rows = [("landmark rows", total_rows), ("specimens", n_specimens)]
+        if len(written_paths) == 1:
+            dialog_rows.append(("path", written_paths[0]))
+        else:
+            dialog_rows.append(("files", len(written_paths)))
+            for p in written_paths:
+                dialog_rows.append(("", p))
+        self.logic.show_key_value_dialog("Landmarks report finished", dialog_rows)
+
+    def _resolve_root(self):
+        """batch_export.output_dir - the shared, optional ROOT for this whole batch run: unset -> study_dir; relative -> resolved under study_dir; absolute -> used as-is. Used both for segment/markup export (further combined with output_dir_pattern below) and as the anchor for the statistics pattern - the one thing genuinely shared between them."""
+        root = self.be_cfg.output_dir
+        if not root:
+            return self.logic.study_dir
+        if not os.path.isabs(root):
+            root = os.path.join(self.logic.study_dir, root)
+        return root
+
+    def _resolve_output_dir(self, specimen):
+        """Resolve batch_export.output_dir (the shared root, see
+        _resolve_root()) + output_dir_pattern (a curly-brace pattern
+        resolved PER SPECIMEN via the same {column} mechanism as the
+        General tab's own output_dir_pattern - any key/database.csv/
+        preseg.csv column; unset defaults the same way too, joining the
+        key columns). Governs SEGMENT and MARKUP export only - the
+        statistics pattern is anchored to the same root but does NOT go
+        through this per-specimen subfolder pattern, see
+        _resolve_stats_output_path(). Falls back entirely to the
+        specimen's own out_dir when output_dir itself is unset (nothing
+        configured here at all)."""
+        if not self.be_cfg.output_dir:
+            return specimen.out_dir
+        root = self._resolve_root()
+        pattern = self.be_cfg.output_dir_pattern or "/".join(f"{{{k}}}" for k in self.cfg.key_columns)
+        rel = pattern.format(**specimen._context())
+        return os.path.join(root, rel)
+
+    def _resolve_stats_output_path(self, specimen):
+        """Resolve batch_export.stats_output_path (the "batch segment
+        statistics pattern") for THIS specimen. "{date}"/"{time}"/
+        "{datetime}" are substituted first if present, then any remaining
+        {column} placeholders are resolved from this specimen's own
+        context (same mechanism as output_dir_pattern). If the result is
+        relative, it's anchored to the SAME root as segment/markup export
+        (_resolve_root() - batch_export.output_dir if set, else
+        study_dir) - but, unlike segment/markup files, NEVER nested
+        through output_dir_pattern; this pattern is its own, separate
+        path directly under that root. Defaults to "report.csv". Two
+        specimens that resolve to the same final path share one CSV;
+        specimens that resolve to different paths (e.g. the pattern
+        references a column whose value differs) end up in separate files
+        - no separate flag needed for that, see _write_stats_csv()."""
+        import datetime
+        out_path = self.be_cfg.stats_output_path or "report.csv"
+        if "{date}" in out_path:
+            out_path = out_path.replace("{date}", datetime.date.today().isoformat())
+        if "{time}" in out_path:
+            out_path = out_path.replace("{time}", datetime.datetime.now().strftime("%H-%M-%S"))  # colon-free, filesystem-safe (Windows disallows ':' in filenames)
+        if "{datetime}" in out_path:
+            out_path = out_path.replace("{datetime}", datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+        out_path = out_path.format(**specimen._context())
+        if os.path.isabs(out_path):
+            return out_path
+        return os.path.join(self._resolve_root(), out_path)
+
+    def _process_segments(self, specimen, geo_ref_node, stats_ref_names, out_dir, stats_path):
         """Export each (filtered) segment to its own labelmap via Slicer's
         native ExportSegmentsToLabelmapNode (geometry from geo_ref_node),
         then - depending on cfg.batch_export - write it to a file and/or
@@ -243,7 +394,7 @@ class BatchProcessor:
                         if sample_arr.shape != mask_arr.shape:
                             logger.warning(f"[BatchProcessor] '{image_name}' geometry doesn't match the segmentation's for {specimen.label}, skipping")
                             continue
-                        self._add_stats_row(specimen, image_name, seg_name, labelmap, mask_arr, sample_arr, batch_val)
+                        self._add_stats_row(specimen, image_name, seg_name, labelmap, mask_arr, sample_arr, stats_path)
 
                 if slicer.mrmlScene.IsNodePresent(labelmap):
                     slicer.mrmlScene.RemoveNode(labelmap)
@@ -255,8 +406,8 @@ class BatchProcessor:
         finally:
             slicer.mrmlScene.EndState(slicer.mrmlScene.BatchProcessState)
 
-    def _add_stats_row(self, specimen, image_name, seg_name, labelmap, mask_arr, sample_arr, batch_val):
-        """Compute this one (sample image, segment) pair's metrics (cfg.batch_export.stats_metrics, or the Definitions default) and append a row to self.stats_rows. batch_val (if per-batch grouping is on) is stashed under a private "_batch" key, used only to group/route rows to the right CSV file at write time - never written out as an actual column."""
+    def _add_stats_row(self, specimen, image_name, seg_name, labelmap, mask_arr, sample_arr, stats_path):
+        """Compute this one (sample image, segment) pair's metrics (cfg.batch_export.stats_metrics, or the Definitions default) and append a row to self.stats_rows, tagged with this specimen's already-resolved stats_path under a private "_stats_path" key - used only to group/route rows to the right CSV file at write time, never written out as an actual column."""
         np = self._np
         metrics = self.be_cfg.stats_metrics or list(DEFAULT_STATS_METRICS)
         roi_pixels = sample_arr[mask_arr == 1]
@@ -267,8 +418,7 @@ class BatchProcessor:
         row["segment"] = seg_name
         for metric_name in metrics:
             row[metric_name] = self._compute_metric(metric_name, roi_pixels, voxel_volume)
-        if batch_val is not None:
-            row["_batch"] = batch_val
+        row["_stats_path"] = stats_path
         self.stats_rows.append(row)
 
     def _compute_metric(self, metric_name, roi_pixels, voxel_volume):
@@ -300,15 +450,15 @@ class BatchProcessor:
             return float(np.percentile(roi_pixels, p))
         raise ValueError(f"unknown stats metric '{metric_name}' - expected volume/min/max/mean/median/std or percentile_<N>")
 
-    def _write_stats_csv(self, per_batch):
-        """Write self.stats_rows to one or more CSVs. When per_batch is
-        False, everything goes into a single combined file
-        (cfg.batch_export.stats_output_path, defaulting to "report.csv").
-        When True, rows are grouped by their "_batch" tag and ONE CSV is
-        written per batch value (see _resolve_stats_output_path for how
-        the "{batch}" placeholder / auto-suffix works), each sorted by key
-        columns then segment name, via the standard library's csv
-        module."""
+    def _write_stats_csv(self):
+        """Write self.stats_rows to one or more CSVs - grouped purely by
+        each row's already-resolved "_stats_path" (see
+        _resolve_stats_output_path()): specimens that resolved to the
+        same path share one file; specimens that resolved to different
+        paths get separate files. No separate grouping flag anywhere -
+        it's entirely a function of what the pattern resolves to. Each
+        file's rows are sorted by key columns, then image, then segment
+        name, via the standard library's csv module."""
         import csv
         if not self.stats_rows:
             logger.warning("[BatchProcessor] compute_stats enabled but no rows produced (no matching segments in any 'done' specimen - see warnings above).")
@@ -319,24 +469,20 @@ class BatchProcessor:
         metrics = self.be_cfg.stats_metrics or list(DEFAULT_STATS_METRICS)
         fieldnames = key_cols + ["image", "segment"] + list(metrics)
 
-        if per_batch:
-            groups = {}
-            for row in self.stats_rows:
-                groups.setdefault(row.get("_batch", "unknown"), []).append(row)
-        else:
-            groups = {None: self.stats_rows}
+        groups = {}
+        for row in self.stats_rows:
+            groups.setdefault(row["_stats_path"], []).append(row)
 
         written_paths = []
         total_rows = 0
-        for batch_val, rows in groups.items():
+        for out_path, rows in groups.items():
             rows_sorted = sorted(
                 rows, key=lambda r: tuple(str(r[c]) for c in key_cols) + (str(r["image"]), str(r["segment"])))
-            out_path = self._resolve_stats_output_path(batch_val)
             out_dir = os.path.dirname(out_path)
             if out_dir and not os.path.isdir(out_dir):
                 os.makedirs(out_dir, exist_ok=True)
             with open(out_path, "w", newline="", encoding="utf-8") as f:
-                # extrasaction="ignore": rows may carry an internal "_batch" tag not in fieldnames
+                # extrasaction="ignore": rows carry an internal "_stats_path" tag not in fieldnames
                 writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
                 writer.writerows(rows_sorted)
@@ -353,34 +499,6 @@ class BatchProcessor:
             for p in written_paths:
                 dialog_rows.append(("", p))
         self.logic.show_key_value_dialog("Batch export finished", dialog_rows)
-
-    def _resolve_stats_output_path(self, batch_val):
-        """Resolve cfg.batch_export.stats_output_path (plain, study_dir-
-        relative unless absolute; defaults to "report.csv") for one
-        output file. "{date}"/"{time}"/"{datetime}" are substituted first if
-        present. If batch_val is not None (per-batch grouping is on):
-        a literal "{batch}" placeholder is substituted with the batch
-        value; if the path doesn't mention "{batch}" at all, the batch
-        value is inserted before the file extension instead, so per-batch
-        files never collide with each other."""
-        import datetime
-        out_path = self.be_cfg.stats_output_path or "report.csv"
-        if "{date}" in out_path:
-            out_path = out_path.replace("{date}", datetime.date.today().isoformat())
-        if "{time}" in out_path:
-            out_path = out_path.replace("{time}", datetime.datetime.now().strftime("%H-%M-%S"))  # colon-free, filesystem-safe (Windows disallows ':' in filenames)
-        if "{datetime}" in out_path:
-            out_path = out_path.replace("{datetime}", datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
-        if batch_val is not None:
-            batch_str = str(batch_val) if batch_val else "unknown"
-            if "{batch}" in out_path:
-                out_path = out_path.replace("{batch}", batch_str)
-            else:
-                root, ext = os.path.splitext(out_path)
-                out_path = f"{root}_{batch_str}{ext}"
-        if not os.path.isabs(out_path):
-            out_path = os.path.join(self.cfg.study_dir, out_path)
-        return out_path
 
 
 def batch_exporter(logic):

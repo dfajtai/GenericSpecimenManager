@@ -321,7 +321,7 @@ class BatchExportConfig:
     """cfg.batch_export - what BatchProcessor (GenericSpecimenEngine.py) does
     with every 'done' specimen, in ONE pass: export segment labelmaps to
     files, export markups, and/or compute custom per-segment statistics
-    into a combined CSV - any combination. Whichever of these is turned
+    into one or more CSVs - any combination. Whichever of these is turned
     on decides what gets loaded per specimen (a lean load, skipping
     workspace/volume-rendering/Segment-Editor setup - see
     GenericSpecimen.load_for_batch())."""
@@ -336,20 +336,23 @@ class BatchExportConfig:
     # decoded from one shared multi-label array).
     compute_stats: bool = False
     reference_image: Optional[str] = None
+    # Affects segment file export, markup file export, AND which segments
+    # get stats rows - the one field genuinely shared across everything.
     segments_filter: Optional[List[str]] = None
-    # Plain literal folder, study_dir-relative unless absolute. May
-    # contain a literal "{batch}" placeholder (substituted with the
-    # specimen's batch_mode.column value) - only meaningful together with
-    # per_batch_operation below.
+    # Governs SEGMENT and MARKUP export only (not statistics - see
+    # stats_output_path below, which shares this same root but is never
+    # nested through output_dir_pattern). output_dir is
+    # the optional ROOT: unset -> study_dir; relative -> resolved under
+    # study_dir; absolute -> used as-is. output_dir_pattern is a
+    # curly-brace pattern resolved PER SPECIMEN and joined onto that root -
+    # the exact same mechanism as the General tab's own output_dir_pattern
+    # (any key/database.csv/preseg.csv column name in {braces}; unset
+    # defaults the same way too, joining the key columns). This lets a
+    # database column - e.g. a "batch" column - route different
+    # specimens' exports into different subfolders, simply by referencing
+    # {batch} in the pattern; no separate on/off flag needed for that.
     output_dir: Optional[str] = None
-    # Splits EVERYTHING this run produces - segment files, markups files,
-    # AND the stats CSV - by batch_mode.column's value: one subfolder
-    # (output_dir/<batch value>/...) per batch for the files, one CSV per
-    # batch for statistics. Only needs batch_mode.column to be set - does
-    # NOT depend on batch_mode.enabled (that flag only controls the
-    # interactive specimen-table filter combo in the main GUI, a
-    # completely separate, independent concern from this).
-    per_batch_operation: bool = False
+    output_dir_pattern: Optional[str] = None
     # One or more Images-tab names to sample intensities from - one stats
     # row per (specimen, sample image, segment). Falls back to
     # `reference_image` above, then segmentation.reference_image, wrapped
@@ -361,13 +364,35 @@ class BatchExportConfig:
     # mean/median/std or percentile_<N> (e.g. percentile_25). Unset/empty
     # falls back to Definitions.DEFAULT_STATS_METRICS.
     stats_metrics: Optional[List[str]] = None
-    # Plain path/filename for the stats CSV - study_dir-relative if not
-    # absolute (no {study_dir} placeholder needed). Defaults to
-    # "report.csv". May contain "{batch}", substituted per batch value
-    # when per_batch_operation is True (and auto-inserted before the
-    # extension if you leave it out, so per-batch files never collide) -
-    # plus whatever date/time placeholders your own build supports.
+    # The "batch segment statistics pattern": a curly-brace pattern (same
+    # {column} mechanism as output_dir_pattern above, plus "{date}"/
+    # "{time}"/"{datetime}") resolved PER SPECIMEN. Defaults to
+    # "report.csv". If the result is a relative path, it's anchored to
+    # output_dir above (the SAME shared root segment/markup files use) -
+    # or to study_dir directly if output_dir itself is unset - but,
+    # unlike segment/markup files, this is NEVER nested through
+    # output_dir_pattern; it's its own separate path straight under that
+    # root. Grouping is automatic and needs no separate flag: specimens
+    # that resolve to the SAME final path share one CSV;
+    # if the pattern references a column that varies (e.g. "{batch}/
+    # report.csv"), specimens with different values naturally end up in
+    # separate files instead.
     stats_output_path: Optional[str] = None
+    # Combines every specimen's landmark points into one or more CSVs -
+    # one row per landmark (identified by its label), key columns
+    # prepended, same grouping-by-resolved-path mechanism as
+    # stats_output_path (see landmarks_output_path below). Only
+    # meaningful together with export_markups (that's what actually
+    # loads the markups node this reads from). A PER-SPECIMEN landmarks
+    # CSV is written automatically whenever export_markups is on,
+    # regardless of this flag - this only controls the additional,
+    # combined multi-specimen report.
+    landmarks_report: bool = False
+    # The "landmarks report pattern" - same {column}/{date}/{time}/
+    # {datetime} mechanism and same root-anchoring as stats_output_path
+    # (batch_export.output_dir if set, else study_dir; never nested
+    # through output_dir_pattern). Defaults to "landmarks_report.csv".
+    landmarks_output_path: Optional[str] = None
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):
@@ -381,9 +406,10 @@ class BatchModeConfig:
     for the MAIN MODULE'S interactive specimen table only. When enabled,
     the GUI shows a batch-select combo box after Initialize Study,
     re-filtering the specimen table to the selected batch value. This is
-    purely a viewing convenience - batch_export.per_batch_operation (which
-    groups export/stats output by batch) only needs `column` below to be
-    set, independent of `enabled` here."""
+    purely a viewing convenience - batch_export's own output_dir_pattern/
+    stats_output_path can reference any database.csv column directly
+    (including this one, by name), with no dependency on this section at
+    all."""
     enabled: bool = False
     column: Optional[str] = None             # database.csv column to group/filter by
 
@@ -441,6 +467,15 @@ class StudyConfig:
     key_columns: List[str] = field(default_factory=lambda: ["ID"])
     done_column: str = "done"
     table_columns: List[str] = field(default_factory=list)
+    # Where a specimen's own files (segmentation, markups, and any image
+    # explicitly saved) live for INTERACTIVE work - resolved per specimen
+    # (any key/database.csv/preseg.csv column in {braces}) and used every
+    # time you load/save a specimen through the normal GUI ("Load selected
+    # specimen"/"Save progress" buttons). This is DIFFERENT from
+    # batch_export's own output_dir/output_dir_pattern, which only apply
+    # during a headless Batch Export run and never touch interactive
+    # work - the two are independent, and either can be set without the
+    # other.
     output_dir_pattern: Optional[str] = None
 
     defaults: DefaultsConfig = field(default_factory=DefaultsConfig)

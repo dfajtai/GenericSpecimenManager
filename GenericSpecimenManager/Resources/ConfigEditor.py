@@ -425,30 +425,38 @@ class ConfigEditorDialog(qt.QDialog):
 
         beGroup = qt.QGroupBox("Batch export")
         beForm = qt.QFormLayout(beGroup)
-        beHint = qt.QLabel(
+
+        self.chkBeEnabled = qt.QCheckBox("Enable batch export")
+        self.chkBeEnabled.setToolTip(
             "Runs once, against every specimen marked 'done' in the database, without opening the "
             "interactive viewer for each one. Pick any combination of what to produce below - each "
             "is independent, and all of them run in the same single pass per specimen.")
-        beHint.setWordWrap(True)
-        beForm.addRow(beHint)
-
-        self.chkBeEnabled = qt.QCheckBox("Enabled")
-        self.chkBeEnabled.setToolTip("Master switch for this whole section - turn this off and everything below is grayed out (its values are kept, just not used) until turned back on.")
         self.chkBeEnabled.connect('toggled(bool)', self._onBeEnabledToggled)
         beForm.addRow(self.chkBeEnabled)
 
         self._beChildWidgets = []
 
+        self.beOutputDirEdit, beOutputDirRow = self._file_row(directory=True)
+        self.beOutputDirEdit.setToolTip(
+            "The base folder for this whole batch run - EVERYTHING below (segment files, markup "
+            "files, and the report) is ultimately anchored to this. Empty -> study_dir. Relative -> "
+            "resolved under study_dir. Absolute -> used exactly as given.")
+        beForm.addRow("Batch export output dir:", beOutputDirRow)
+        self._beChildWidgets.append(beOutputDirRow)
+
         producesSep = qt.QFrame()
         producesSep.setFrameShape(qt.QFrame.HLine)
         beForm.addRow(producesSep)
-        beForm.addRow(qt.QLabel("<b>What to produce</b> - check any combination:"))
+        beForm.addRow(qt.QLabel("<b>Batch operations</b> - check any combination:"))
         producesRow = qt.QHBoxLayout()
         self.chkBeExportSegments = qt.QCheckBox("Export segments")
         self.chkBeExportSegments.setToolTip("Writes each segment to its own labelmap file, one per segment per specimen.")
         producesRow.addWidget(self.chkBeExportSegments)
         self.chkBeExportMarkups = qt.QCheckBox("Export markups")
-        self.chkBeExportMarkups.setToolTip("Writes each specimen's markups/landmarks file.")
+        self.chkBeExportMarkups.setToolTip(
+            "Writes each specimen's markups/landmarks .mrk.json file, PLUS a per-specimen landmarks "
+            "CSV (label, x, y, z - world/RAS position, read straight from the live markups node) "
+            "automatically alongside it - no separate switch needed for that part.")
         producesRow.addWidget(self.chkBeExportMarkups)
         self.chkBeComputeStats = qt.QCheckBox("Custom segment statistics")
         self.chkBeComputeStats.setToolTip(
@@ -456,14 +464,21 @@ class ConfigEditorDialog(qt.QDialog):
             "overlapping segments correctly) - every 'done' specimen's rows go into a combined CSV. "
             "Configured in the 'Segment statistics settings' group further down.")
         producesRow.addWidget(self.chkBeComputeStats)
+        self.chkBeLandmarksReport = qt.QCheckBox("Landmarks report")
+        self.chkBeLandmarksReport.setToolTip(
+            "Needs Export markups above also checked. In addition to the automatic per-specimen "
+            "landmarks CSV, combines every specimen's landmarks into one or more CSVs (one row per "
+            "landmark, key columns prepended) - configured in 'Landmarks report settings' further "
+            "down.")
+        producesRow.addWidget(self.chkBeLandmarksReport)
         producesRow.addStretch(1)
         beForm.addRow(producesRow)
-        self._beChildWidgets += [self.chkBeExportSegments, self.chkBeExportMarkups, self.chkBeComputeStats]
+        self._beChildWidgets += [self.chkBeExportSegments, self.chkBeExportMarkups, self.chkBeComputeStats, self.chkBeLandmarksReport]
 
         settingsSep = qt.QFrame()
         settingsSep.setFrameShape(qt.QFrame.HLine)
         beForm.addRow(settingsSep)
-        beForm.addRow(qt.QLabel("<b>Export segments settings</b>:"))
+        beForm.addRow(qt.QLabel("<b>Export settings</b> - govern segment + markup export:"))
 
         refRow = qt.QHBoxLayout()
         self.beReferenceImageEdit = qt.QComboBox()
@@ -480,21 +495,6 @@ class ConfigEditorDialog(qt.QDialog):
         beForm.addRow("Reference image (name):", refRow)
         self._beChildWidgets += [self.beReferenceImageEdit, refSuggestBtn]
 
-        self.beOutputDirEdit, beOutputDirRow = self._file_row(directory=True)
-        self.beOutputDirEdit.setToolTip(
-            "Absolute path -> used exactly as given. Relative (or empty) path -> resolved under "
-            "study_dir. Optional shared export folder for ALL specimens - a PLAIN literal folder "
-            "(no {ID}-style per-specimen placeholders; that's what this tab's Output dir pattern is "
-            "for). May contain a literal \"{batch}\" placeholder - see Per-batch operation below. If "
-            "empty, each specimen exports into its own out_dir instead.")
-        beForm.addRow("Batch export output dir:", beOutputDirRow)
-        self._beChildWidgets.append(beOutputDirRow)
-
-        sharedSep = qt.QFrame()
-        sharedSep.setFrameShape(qt.QFrame.HLine)
-        beForm.addRow(sharedSep)
-        beForm.addRow(qt.QLabel("<b>Shared settings</b> - apply across exports AND statistics alike:"))
-
         segFilterRow = qt.QHBoxLayout()
         self.beSegmentsFilterEdit = qt.QLineEdit()
         self.beSegmentsFilterEdit.setPlaceholderText("comma-separated segment names, empty = all")
@@ -504,25 +504,28 @@ class ConfigEditorDialog(qt.QDialog):
         segFilterAllBtn.connect('clicked(bool)', lambda checked=False: self._onInsertAllSegmentsFilter())
         segFilterRow.addWidget(segFilterAllBtn)
         beForm.addRow("Segments filter:", segFilterRow)
+        self.beSegmentsFilterEdit.setToolTip("Also affects which segments get statistics rows below, not just file export.")
         self._beChildWidgets += [self.beSegmentsFilterEdit, segFilterAllBtn]
 
-        self.chkBePerBatchOperation = qt.QCheckBox("Per-batch operation")
-        self.chkBePerBatchOperation.setToolTip(
-            "Splits EVERYTHING this run produces by the Group-by key above - segment files, markup "
-            "files, AND the stats CSV: one output_dir/<key value>/... subfolder for files, one "
-            "stats CSV per key value (auto-named, or use \"{batch}\" yourself in Batch export stats "
-            "output path below). Only needs the Group-by key above to be SET - independent of "
-            "\"Group subjects by key\" in the General tab, which is a separate, main-module-only "
-            "viewing convenience.")
-        beForm.addRow(self.chkBePerBatchOperation)
-        self._beChildWidgets.append(self.chkBePerBatchOperation)
+        self.beOutputDirPatternEdit = qt.QLineEdit()
+        self.beOutputDirPatternEdit.setPlaceholderText("e.g. {ID}/{measurement}")
+        self.beOutputDirPatternEdit.setToolTip(
+            "Curly-brace pattern joined onto the output dir above, resolved separately for each "
+            "specimen - the SAME mechanism as this tab's own Output dir pattern (any key/database.csv/preseg.csv "
+            "column in {braces}). Leave empty to default the same way that one does too (your key "
+            "columns, joined). A database column that varies per specimen - e.g. a \"batch\" column - "
+            "naturally routes different specimens into different subfolders just by being referenced "
+            "here, e.g. {batch}/{ID} - no separate on/off switch needed for that.")
+        beForm.addRow("Export dir pattern:", self.beOutputDirPatternEdit)
+        self._beChildWidgets.append(self.beOutputDirPatternEdit)
 
         statsSep = qt.QFrame()
         statsSep.setFrameShape(qt.QFrame.HLine)
         beForm.addRow(statsSep)
         beForm.addRow(qt.QLabel(
             "<b>Segment statistics settings</b> - only used when \"Custom segment statistics\" "
-            "above is checked:"))
+            "above is checked; shares the same output-dir root as the export settings above, but "
+            "never goes through the output dir pattern:"))
 
         statsRefRow = qt.QHBoxLayout()
         self.statsReferenceImagesEdit = qt.QLineEdit()
@@ -558,14 +561,37 @@ class ConfigEditorDialog(qt.QDialog):
         self.statsOutputPathEdit = qt.QLineEdit()
         self.statsOutputPathEdit.setPlaceholderText("report.csv")
         self.statsOutputPathEdit.setToolTip(
-            "Absolute path -> used exactly as given. Relative (or empty) path -> resolved under "
-            "study_dir (no need to spell that out yourself). \"{date}\" (YYYY-MM-DD), \"{time}\" "
-            "(HH-MM-SS), and/or \"{datetime}\" (YYYY-MM-DD_HH-MM-SS) are substituted if present. With "
-            "Per-batch operation on: a literal \"{batch}\" placeholder is substituted per batch "
-            "value, or - if you don't include one - the batch value is inserted before the extension "
-            "automatically, so per-batch files never collide. Leave empty to default to report.csv.")
-        beForm.addRow("Batch export stats output path:", self.statsOutputPathEdit)
+            "Curly-brace pattern, resolved separately for each specimen (same {column} mechanism as "
+            "the output dir pattern above). If relative, anchored to Batch export output dir above "
+            "(the SAME root segment/markup files use) - or to study_dir directly if that's empty - "
+            "but, unlike segment/markup files, NEVER nested through the output dir pattern; this is "
+            "its own separate path straight under that root. \"{date}\" (YYYY-MM-DD), \"{time}\" "
+            "(HH-MM-SS), and/or \"{datetime}\" (YYYY-MM-DD_HH-MM-SS) are also substituted if present. "
+            "Specimens that resolve to the SAME final path share one CSV; referencing a column that "
+            "varies (e.g. \"{batch}/report.csv\") naturally splits those specimens into separate files "
+            "instead - no separate on/off switch needed. Leave empty to default to report.csv (one "
+            "shared file for everyone).")
+        beForm.addRow("Report pattern:", self.statsOutputPathEdit)
         self._beChildWidgets.append(self.statsOutputPathEdit)
+
+        lmSep = qt.QFrame()
+        lmSep.setFrameShape(qt.QFrame.HLine)
+        beForm.addRow(lmSep)
+        beForm.addRow(qt.QLabel(
+            "<b>Landmarks report settings</b> - only used when \"Landmarks report\" above is "
+            "checked; needs Export markups checked too:"))
+        self.landmarksOutputPathEdit = qt.QLineEdit()
+        self.landmarksOutputPathEdit.setPlaceholderText("landmarks_report.csv")
+        self.landmarksOutputPathEdit.setToolTip(
+            "Curly-brace pattern (same {column} mechanism as the export dir pattern above), "
+            "resolved separately for each specimen. If relative, anchored to Batch export output "
+            "dir above - or study_dir directly if that's empty - never nested through the export "
+            "dir pattern. \"{date}\"/\"{time}\"/\"{datetime}\" also substituted if present. "
+            "Specimens that resolve to the SAME final path share one CSV; referencing a column "
+            "that varies (e.g. \"{batch}/landmarks.csv\") naturally splits those specimens into "
+            "separate files instead. Leave empty to default to landmarks_report.csv.")
+        beForm.addRow("Landmarks report pattern:", self.landmarksOutputPathEdit)
+        self._beChildWidgets.append(self.landmarksOutputPathEdit)
 
         form.addRow(beGroup)
         self._onBeEnabledToggled(self.chkBeEnabled.checked)
@@ -1430,7 +1456,7 @@ class ConfigEditorDialog(qt.QDialog):
         return w
 
     def _onBeEnabledToggled(self, checked):
-        """Gray out (or restore) every Batch export child widget below the master Enabled checkbox - values are left untouched, just not editable/usable while disabled."""
+        """Enable/disable every Batch export child widget together with Enable batch export - values are left untouched either way."""
         for w in getattr(self, "_beChildWidgets", []):
             w.enabled = checked
 
@@ -1572,14 +1598,53 @@ class ConfigEditorDialog(qt.QDialog):
             return f"<p>Could not load {filename}: {e}</p>"
 
     def _onShowHelp(self):
-        """Open the HTML cheat-sheet (Resources/Html/help_cheatsheet.html) in a read-only, scrollable, copyable QTextBrowser popup."""
+        """Open the HTML cheat-sheet (Resources/Html/help_cheatsheet.html) in a read-only, scrollable, copyable QTextBrowser popup, with a section-jump combo and a text search bar on top - the content has grown long enough that jumping straight to a section or searching beats scrolling through the whole thing."""
         popup = qt.QDialog(self)
         popup.setWindowTitle("Config Editor - Cheat Sheet")
         popup.resize(700, 620)
         layout = qt.QVBoxLayout(popup)
+
         browser = qt.QTextBrowser()
         browser.setOpenExternalLinks(False)
         browser.setHtml(self._load_html_resource("help_cheatsheet.html"))
+
+        navRow = qt.QHBoxLayout()
+        navRow.addWidget(qt.QLabel("Jump to:"))
+        sectionCombo = qt.QComboBox()
+        # (label, anchor) pairs - anchor ids match the <a name="..."> tags in help_cheatsheet.html
+        sections = [
+            ("Workflow", "workflow"), ("General", "general"), ("Images", "images"),
+            ("Segmentation", "segmentation"), ("Landmarks", "landmarks"), ("Workspace", "workspace"),
+            ("Segment editor", "segment-editor"), ("Volume rendering", "volume-rendering"),
+            ("Defaults / Presets", "defaults-presets"), ("Manual edit config", "manual-edit-config"),
+        ]
+        for label, _anchor in sections:
+            sectionCombo.addItem(label)
+        sectionCombo.connect(
+            'currentIndexChanged(int)',
+            lambda i: browser.scrollToAnchor(sections[i][1]) if 0 <= i < len(sections) else None)
+        navRow.addWidget(sectionCombo)
+        navRow.addStretch(1)
+        layout.addLayout(navRow)
+
+        findRow = qt.QHBoxLayout()
+        findRow.addWidget(qt.QLabel("Find:"))
+        findEdit = qt.QLineEdit()
+        findEdit.setPlaceholderText("search this page...")
+
+        def do_find(_checked=False):
+            text = findEdit.text.strip()
+            if text:
+                browser.find(text)
+
+        findEdit.connect('returnPressed()', do_find)
+        findRow.addWidget(findEdit)
+        findNextBtn = qt.QPushButton("Find next")
+        findNextBtn.setToolTip("Repeats the search, wrapping to the top once it reaches the end.")
+        findNextBtn.connect('clicked(bool)', do_find)
+        findRow.addWidget(findNextBtn)
+        layout.addLayout(findRow)
+
         layout.addWidget(browser)
         closeBtn = qt.QPushButton("Close")
         closeBtn.connect('clicked(bool)', lambda checked=False: popup.close())
@@ -1657,8 +1722,9 @@ class ConfigEditorDialog(qt.QDialog):
                      self.lmCsvColumnEdit, self.lmPathPatternEdit, self.lmTemplateEdit, self.lmColorEdit,
                      self.wlMinEdit, self.wlMaxEdit,
                      self.sliceRotRedEdit, self.sliceRotYellowEdit, self.sliceRotGreenEdit,
-                     self.beSegmentsFilterEdit, self.beOutputDirEdit,
+                     self.beSegmentsFilterEdit, self.beOutputDirEdit, self.beOutputDirPatternEdit,
                      self.statsReferenceImagesEdit, self.statsMetricsEdit, self.statsOutputPathEdit,
+                     self.landmarksOutputPathEdit,
                      self.brushDiameterEdit, self.activeEffectEdit):
             edit.text = ""
         self.beReferenceImageEdit.clear()
@@ -1666,7 +1732,7 @@ class ConfigEditorDialog(qt.QDialog):
         self.segOutputFilenameEdit.text = "segment.seg.nrrd"
         for chk in (self.chkBatchMode, self.chkSegEnabled, self.chkLmEnabled,
                     self.chkWlEnabled, self.chkSliceRotationEnabled, self.chkBeEnabled, self.chkBeExportSegments,
-                    self.chkBeExportMarkups, self.chkBePerBatchOperation, self.chkBeComputeStats):
+                    self.chkBeExportMarkups, self.chkBeComputeStats, self.chkBeLandmarksReport):
             chk.checked = False
         self._onBeEnabledToggled(False)
         self.chkLmWritable.checked = True
@@ -1844,11 +1910,13 @@ class ConfigEditorDialog(qt.QDialog):
         self.beReferenceImageEdit.currentText = be.get("reference_image", "") or ""
         self.beSegmentsFilterEdit.text = ",".join(be.get("segments_filter") or [])
         self.beOutputDirEdit.text = be.get("output_dir", "") or ""
-        self.chkBePerBatchOperation.checked = bool(be.get("per_batch_operation"))
+        self.beOutputDirPatternEdit.text = be.get("output_dir_pattern", "") or ""
         self.chkBeComputeStats.checked = bool(be.get("compute_stats"))
         self.statsReferenceImagesEdit.text = ",".join(be.get("stats_reference_images") or [])
         self.statsMetricsEdit.text = ",".join(be.get("stats_metrics") or [])
         self.statsOutputPathEdit.text = be.get("stats_output_path", "") or ""
+        self.chkBeLandmarksReport.checked = bool(be.get("landmarks_report"))
+        self.landmarksOutputPathEdit.text = be.get("landmarks_output_path", "") or ""
 
         se = cfg.get("segment_editor", {}) or {}
         self.overwriteModeCombo.currentText = se.get("overwrite_mode", "none") or "none"
@@ -2027,8 +2095,8 @@ class ConfigEditorDialog(qt.QDialog):
                 "enabled": True,
                 "export_segments": self.chkBeExportSegments.checked,
                 "export_markups": self.chkBeExportMarkups.checked,
-                "per_batch_operation": self.chkBePerBatchOperation.checked,
                 "compute_stats": self.chkBeComputeStats.checked,
+                "landmarks_report": self.chkBeLandmarksReport.checked,
             }
             if self.beReferenceImageEdit.currentText.strip():
                 be["reference_image"] = self.beReferenceImageEdit.currentText.strip()
@@ -2037,6 +2105,8 @@ class ConfigEditorDialog(qt.QDialog):
                 be["segments_filter"] = filt
             if self.beOutputDirEdit.text.strip():
                 be["output_dir"] = self.beOutputDirEdit.text.strip()
+            if self.beOutputDirPatternEdit.text.strip():
+                be["output_dir_pattern"] = self.beOutputDirPatternEdit.text.strip()
             filt = _csv_list(self.statsReferenceImagesEdit.text)
             if filt:
                 be["stats_reference_images"] = filt
@@ -2053,6 +2123,8 @@ class ConfigEditorDialog(qt.QDialog):
                 be["stats_metrics"] = metrics
             if self.statsOutputPathEdit.text.strip():
                 be["stats_output_path"] = self.statsOutputPathEdit.text.strip()
+            if self.landmarksOutputPathEdit.text.strip():
+                be["landmarks_output_path"] = self.landmarksOutputPathEdit.text.strip()
             cfg["batch_export"] = be
 
         overwrite = self.overwriteModeCombo.currentText

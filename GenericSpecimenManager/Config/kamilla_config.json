@@ -139,10 +139,18 @@
     "enabled": true,
     "export_segments": true,
     "export_markups": false,
-    "per_batch_operation": true,
     "compute_stats": true,
     "reference_image": "native",
+    "segments_filter": [
+      "liver",
+      "gallbladder",
+      "lesion",
+      "portal_vena",
+      "aorte",
+      "background"
+    ],
     "output_dir": "/home/fajtai/New Folder/",
+    "output_dir_pattern": "{software}/{accession}",
     "stats_reference_images": [
       "native",
       "water",
