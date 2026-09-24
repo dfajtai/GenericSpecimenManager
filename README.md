@@ -2,7 +2,7 @@
 
 A single, JSON-configured Slicer module. No per-species Python module - one
 `config.json` describes a study (which images, which segments, which
-landmarks, batch export, how the Segment Editor should behave, ...), and the
+markups, batch export, how the Segment Editor should behave, ...), and the
 module loads and executes it.
 
 This README lives at the **repo root**, one level above the actual Slicer
@@ -25,13 +25,15 @@ GenericSpecimenManager/                          <- repo root (this README, top 
     ├── Resources/
     │   ├── ConfigModel.py                        <- dataclasses: StudyConfig and the rest of the schema
     │   ├── GenericSpecimenEngine.py               <- the actual logic (Logic, GenericSpecimen, Widget base)
-    │   ├── BatchProcessor.py                     <- batch export/statistics, run against every 'done' specimen
+    │   ├── BatchProcessor.py                     <- batch export/statistics, run against every 'finished' specimen
     │   ├── ConfigEditor.py                       <- the dialog behind the "Config Editor..." button
     │   ├── Definitions.py                        <- every hardcoded toggle/curated choice list, in ONE place
+    │   ├── HelpDialog.py                         <- the shared cheat-sheet popup (section jump + search) used by both Help buttons
     │   ├── LoggingSetup.py                       <- shared logger, optional log-to-file
     │   ├── Presets/example_presets.json          <- Config Editor's preset catalogue - extensible without code
-    │   ├── Html/                                 <- Config Editor Help / example-presets HTML content - extensible without code
-    │   │   ├── help_cheatsheet.html
+    │   ├── Html/                                 <- Help / example-presets HTML content - extensible without code
+    │   │   ├── config_editor_help_cheatsheet.html
+    │   │   ├── module_help_cheatsheet.html       <- the main module's own cheat sheet (the collapsed Help block at the bottom of the module)
     │   │   └── example_presets_template.html
     │   ├── Icons/GenericSpecimenManager.png / .svg
     │   └── UI/GenericSpecimenManager.ui
@@ -50,12 +52,13 @@ Each file's responsibility:
 | [`GenericSpecimenManager.py`](GenericSpecimenManager/GenericSpecimenManager.py) | Slicer module registration (title, icon, `CONFIG_PATH`) - ~60 lines, no business logic |
 | [`Resources/ConfigModel.py`](GenericSpecimenManager/Resources/ConfigModel.py) | the typed, attribute-accessed representation of `config.json` (dataclasses) |
 | [`Resources/GenericSpecimenEngine.py`](GenericSpecimenManager/Resources/GenericSpecimenEngine.py) | `Logic`, `GenericSpecimen` (load/save/close one specimen), the Widget base class |
-| [`Resources/BatchProcessor.py`](GenericSpecimenManager/Resources/BatchProcessor.py) | `BatchProcessor` - segment/markup export and/or custom statistics for every `done` specimen, one combined CSV |
+| [`Resources/BatchProcessor.py`](GenericSpecimenManager/Resources/BatchProcessor.py) | `BatchProcessor` - segment/markup export and/or custom statistics for every `finished` specimen, one combined CSV |
 | [`Resources/ConfigEditor.py`](GenericSpecimenManager/Resources/ConfigEditor.py) | GUI for building/editing `config.json` without hand-writing JSON |
 | [`Resources/Definitions.py`](GenericSpecimenManager/Resources/Definitions.py) | every hardcoded toggle (e.g. `HIDE_HELP_AND_ACKNOWLEDGEMENT`) and curated dropdown-choice list, in one findable place |
+| [`Resources/HelpDialog.py`](GenericSpecimenManager/Resources/HelpDialog.py) | the shared cheat-sheet popup (section-jump combo + search bar) behind both Help buttons |
 | [`Resources/LoggingSetup.py`](GenericSpecimenManager/Resources/LoggingSetup.py) | the shared `logger` every other file uses instead of `print()`, with an optional log-to-file toggle |
 | [`Resources/Presets/example_presets.json`](GenericSpecimenManager/Resources/Presets/example_presets.json) | Config Editor's preset catalogue - **data, not code**, freely extensible |
-| [`Resources/Html/*.html`](GenericSpecimenManager/Resources/Html) | Config Editor's Help + example-presets popup content - **data, not code**, freely extensible |
+| [`Resources/Html/*.html`](GenericSpecimenManager/Resources/Html) | the two cheat sheets (Config Editor's and the main module's) + example-presets popup content - **data, not code**, freely extensible |
 
 All Python files are **100% docstring-covered** (classes, methods,
 nested helper functions too) - VS Code's Outline panel / hover tooltips give
@@ -71,7 +74,7 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
 [`ConfigModel.py`](GenericSpecimenManager/Resources/ConfigModel.py) fall into two groups:
 
 - **Section dataclasses** (`StudyConfig`, `SegmentationConfig`,
-  `LandmarksConfig`, `GlobalWindowLevelConfig`, `BatchExportConfig`,
+  `MarkupsConfig`, `GlobalWindowLevelConfig`, `BatchExportConfig`,
   `GroupByKeyConfig`, `SegmentEditorConfig`, `BrushConfig`,
   `DefaultsConfig`) - one meaning, one place in the schema, built once from
   the raw dict (`ClassName.from_dict(...)`).
@@ -93,8 +96,8 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
 {
   "study_dir": "...", "database_csv_path": "...", "preseg_csv_path": "...",
   "key_columns": ["ID"],                       // composite key, present in BOTH csvs
-  "done_column": "done",
-  "table_columns": ["ID", "comment", "done"],  // ANY database.csv column can be shown/edited
+  "status_column": "status",
+  "table_columns": ["ID", "comment", "status"],  // ANY database.csv column can be shown/edited
   "output_dir_pattern": "{ID}",                 // curly-brace format string, builds each specimen's output folder
 
   "defaults": {
@@ -130,8 +133,8 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
     "output_filename": "segment.seg.nrrd", "opacity": 0.5
   },
 
-  "landmarks": { "enabled": true, "csv_column": "markups_path", "path_pattern": "{label}-markups.mrk.json",
-                 "template_path": "template.mrk.json", "writable": true, "color": [1,1,0] },
+  "markups": { "enabled": true, "csv_column": "markups_path", "path_pattern": "{label}-markups.mrk.json",
+               "template_path": "template.mrk.json", "writable": true, "color": [1,1,0] },
 
   "volume_rendering": [
     // LIST - one entry per image, any/all of them can be enabled at once
@@ -141,13 +144,24 @@ Instead of `cfg["segmentation"].get("segments", [])`, you write
 
   "window_level": { "enabled": false, "min": -150, "max": 700 },  // GLOBAL, applied to every loaded volume
 
+  "auto_save_database": false,   // write database.csv after every table edit (default false; hides "Save database CSV")
   "group_by_key": { "enabled": true, "column": "batch" },
+  "status_filter": { "enabled": true },        // optional; on by default - the main module's Status filter checklist
+
+  "factor_columns": [
+    // Renders as a checkbox (binary) or a level dropdown (multilevel) in the main module's
+    // specimen table instead of free text. Only shows up if the column is ALSO in table_columns.
+    { "column": "sex", "type": "binary" },
+    { "column": "treatment", "type": "multilevel", "levels": ["control", "low", "high"] }
+  ],
 
   "batch_export": {
     "enabled": true, "export_segments": true, "export_markups": true,
-    "reference_image": "mask", "segments_filter": ["liver", "tumor"],
+    "reference_image": "mask", "segments_filter": ["liver", "tumor"],       // export_segments only
+    "stats_segments_filter": ["liver"],                                    // compute_stats only, independent of segments_filter
     "output_dir": "results", "output_dir_pattern": "{batch}/{ID}",  // per-specimen, {column} mechanism
-    "landmarks_report": true, "landmarks_output_path": "{batch}/landmarks.csv"
+    "stats_output_path": "{batch}/report_{index}.csv",              // {index} = 01-based, avoids overwriting a previous run
+    "markups_report": true, "markups_output_path": "{batch}/markups_{index}.csv"
   },
 
   "segment_editor": {
@@ -182,11 +196,11 @@ workspace/tools around it behave:
 
 | tab | in a sentence |
 |---|---|
-| General | paths, key/table/output-dir columns, "Group subjects by key" |
-| Batch export | headless batch run: what to produce, where it goes, and the segment/landmark reports |
+| General | paths, key/table/output-dir columns, Filtering ("Group specimens by key", "Filter by status"), factor columns |
+| Batch export | headless batch run: what to produce, where it goes, and the segment/markup reports |
 | Images | the images[] table + live merge preview |
 | Segmentation | segments[] table + reference/path pattern |
-| Landmarks | markups file/template config |
+| Markups | markups file/template config |
 | Workspace | window/level, slice rotation, crosshair, ruler, 3D marker |
 | Segment editor | brush/overwrite-mode/active-effect defaults |
 | Volume rendering | per-image VR table (enable/preset/shift) |
@@ -196,24 +210,37 @@ workspace/tools around it behave:
 **General** - Study dir first (set it before browsing the two CSVs below - they
 display relative to whatever it already contains); key/table/output-dir
 columns; "Show CSV columns..." (both CSVs' headers + the columns common to
-both = likely key-column candidates); "Group subjects by key" - a
-main-module-only viewing convenience (a group-select combo after Initialize
-Study), with zero effect on the Batch export tab.
+both = likely key-column candidates); **Status column** (the `database.csv`
+column holding each specimen's status - any name, e.g. `done`; see "Specimen
+status" below); **Auto-save database**; **Filtering** - "Group specimens by
+key" (with its key column on the same row) and "Filter by status", both
+main-module-only viewing conveniences (a group-select combo / a status
+checklist above the table), with zero effect on the Batch export tab. **Factor columns** - a
+small table (Add/Remove) turning any `database.csv` column into a checkbox
+("binary") or a level dropdown ("multilevel", with its own comma-separated
+Levels field) in the main module's specimen table, instead of free-text
+editing - a level is always written to the CSV as its exact text, never a
+numeric index. Independent of Table columns: a factor column only actually
+renders as a checkbox/dropdown if it's ALSO listed there.
 
 **Batch export** - its own tab (it outgrew a group box inside General).
-"Enable batch export" is the master switch; below it, **Batch export output
+"Enable batch export" is the master switch; below it, **Batch export root
 dir** is the base folder everything else on this tab is anchored to. Then
-**Batch operations** (check any combination) - export_segments,
-export_markups (also writes a per-specimen landmarks CSV automatically -
-label/x/y/z, read straight from the live markups node, not re-derived from
-the .mrk.json file's "orientation" field, which is a display-only local
-axis frame, not a per-point transform to apply on top of position),
-Landmark summary (combines every specimen's landmarks into one or more
-CSVs), and Custom segment statistics. **Export settings** (reference_image,
-segments_filter, output_dir_pattern) govern segment + markup export only.
-**Landmark summary settings** and **Segment statistics settings** are each
-their own pattern (see the "Batch mode & batch export" section below for
-exactly how these resolve and group).
+**Batch operations** (check any combination, in this order) - export_segments,
+Custom segment statistics, then (on their own row) export_markups (also
+writes a per-specimen markups CSV automatically - label/x/y/z, read
+straight from the live markups node, not re-derived from the .mrk.json
+file's "orientation" field, which is a display-only local axis frame, not
+a per-point transform to apply on top of position) and Markup summary
+(combines every specimen's markup points into one or more CSVs).
+**Segment export settings** (reference_image, segments_filter,
+output_dir_pattern) govern segment file export only. **Segment statistics
+settings** has its own, independent segments filter (a segment can be
+exported without being in the statistics, or vice versa), plus metrics and
+the report pattern. **Markup summary settings** has its own pattern.
+Both the statistics report pattern and the markup summary pattern support
+an `{index}` placeholder (see the "Batch mode & batch export" section below
+for exactly how these resolve, group, and what `{index}` does).
 
 **Images** - quick-add table (column name + Add + Labelmap checkbox); the main
 table (name, csv_column, pattern/strip, type, role, required, **Preset**
@@ -225,10 +252,10 @@ selected row.
 **Segmentation** - enabled, reference_image, path_pattern, output_filename; a
 segments table (name, source, csv_column, path_pattern, color picker).
 
-**Landmarks** - enabled, csv_column, path_pattern, template_path, writable,
-color.
+**Markups** - enabled, csv_column, path_pattern, template_path, writable,
+color (a picker - *Set color...* / *Clear*, same as the segments' colors).
 
-**Workspace** - blanket window/level; slice rotation (Red/Yellow/Green,
+**Workspace** - (also: optional **Specimen annotation** - `workspace.specimen_annotation` - yellow top-left text in the Red/Yellow/Green/3D views showing the loaded specimen's ID, a rule, one `column: value` line per remaining Table column, a rule, and the status; live-updated on table edits; its font size/color/background are constants in `Definitions.py`); blanket window/level; slice rotation (Red/Yellow/Green,
 degrees); crosshair mode/behavior/thickness; ruler and 3D orientation
 marker - all applied once per specimen load. Every field defaults to
 `(unset)` (leave Slicer's own default alone) except the three crosshair
@@ -252,12 +279,14 @@ tabs ("Apply to form"). Save always builds from the tabs, so hand edits
 here need Apply first or they won't be saved.
 
 **Help**: a "Help" button opens a `QTextBrowser`-rendered HTML cheat sheet
-(source: [`Resources/Html/help_cheatsheet.html`](GenericSpecimenManager/Resources/Html/help_cheatsheet.html);
-scrollable, copyable - not a wall of plain text), one section per tab (in
-the same order as the tabs), with concrete examples (e.g. the Segment
-Editor section includes a real node-attribute dump plus step-by-step
-instructions for finding the exact attribute name on your own Slicer
-version).
+(source: [`Resources/Html/config_editor_help_cheatsheet.html`](GenericSpecimenManager/Resources/Html/config_editor_help_cheatsheet.html);
+scrollable, copyable, with a section-jump combo and a search bar - not a wall of
+plain text), one section per tab (in the same order as the tabs), with concrete
+examples (e.g. the Segment Editor section includes a real node-attribute dump plus
+step-by-step instructions for finding the exact attribute name on your own Slicer
+version). The same popup (`HelpDialog.py`) shows the main module's own cheat sheet,
+[`module_help_cheatsheet.html`](GenericSpecimenManager/Resources/Html/module_help_cheatsheet.html),
+from the collapsed **Help** block at the bottom of the module.
 
 **New / Load from file / Reload from disk**: New and Load from file both
 prompt Save/Discard/Cancel first if the form has unsaved changes. Reload
@@ -282,7 +311,7 @@ Two of the Config Editor's content sources are deliberately **externalized
 from [`ConfigEditor.py`](GenericSpecimenManager/Resources/ConfigEditor.py)**, so they can be
 extended later without any Python knowledge:
 
-- **[`Resources/Html/help_cheatsheet.html`](GenericSpecimenManager/Resources/Html/help_cheatsheet.html)**
+- **[`Resources/Html/config_editor_help_cheatsheet.html`](GenericSpecimenManager/Resources/Html/config_editor_help_cheatsheet.html)**
   - the full content behind the "Help" button. Plain editable HTML/CSS (Qt's
   rich-text subset - don't expect full browser compatibility, but the usual
   `<h2>/<ul>/<li>/<table>/<pre>/<code>` all work). A new section is just a
@@ -305,7 +334,7 @@ extended later without any Python knowledge:
 All three loaders are **defensive**: a missing/broken file doesn't crash
 anything - it just returns an empty catalogue
 (`Presets/example_presets.json`) or a short inline error message
-(`help_cheatsheet.html` / `example_presets_template.html`). See
+(`config_editor_help_cheatsheet.html` / `example_presets_template.html`). See
 `_load_example_presets()` / `_load_html_resource()`.
 
 ## Segment Editor integration - the full story
@@ -423,6 +452,32 @@ alternative to `window_level`; if both are set, `offset` wins. Note: this
 shifts the actual render correctly, but Slicer's own Volume Rendering
 module's "Shift" slider won't reflect it - cosmetic only.
 
+## Main module layout, specimen status, filter and reset
+
+The module is three collapsible blocks in the Slicer style: **Advanced Study Settings** (collapsed; the
+config and CSV paths), then the **Initialize Study** button (pastel green until a study is initialized;
+**Save database CSV** - hidden with `auto_save_database` - and **Batch export** - only if the config
+enables it - appear under it once it is), the **Specimen browser** (Group and Status filters in one row, the
+table, Load / Reset / Save / Close) and a collapsed **Help** block.
+
+Each specimen has a status, stored in the `status_column` of `database.csv` as an integer
+(`0` untouched, `1` in progress, `2` to review, `3` finished; values live in `Definitions.py`).
+The table always shows it as its last column, headed `Status`, as a dropdown that also colors the
+row (white / light blue / pale yellow / darker green).
+
+- **Automatic:** a specimen goes `0` → `1` when it loads from its own saved file or is saved. This
+  never downgrades `2`/`3`. Closing without changes leaves the status alone.
+- **Saving:** *Save progress for active specimen*, or **Ctrl+S** from any module while a specimen is loaded (Slicer's own Save scene shortcut is untouched when none is loaded).
+- **Manual:** the table dropdown, or the Close active specimen dialog (*Yes, mark to review* /
+  *Yes, mark finished*).
+- **Status filter:** a checklist above the table (all ticked by default) shows only the specimens in
+  the ticked statuses; it can be switched off with `status_filter.enabled` (Config Editor: General → Filtering → *Filter by status*). Batch export always processes `finished` specimens only, whatever the filter says.
+- **Reset selected specimen...** (pastel-red button under *Load selected specimen*; works on the
+  selected row, no need to load it): **permanently deletes** the specimen's saved segmentation and
+  markups files and sets its status back to `untouched`. The confirmation dialog shows the specimen ID and the exact
+  files, and the button only enables after typing `RESET`. If the specimen is currently loaded it
+  is closed too (unsaved work is discarded). Source images are never touched.
+
 ## Error handling in the main module
 
 **Live, continuous validation** (not just a popup on click): the
@@ -452,45 +507,42 @@ exceptions (JSON parse errors, an `initializeStudy` crash) still use
 Study, a Save/Discard/Cancel prompt appears first - re-initializing the
 study could lose, or misattribute, the open specimen's unsaved work.
 
+**Config Editor with no valid config path**: clicking "Config Editor..."
+while the config path field isn't an actual file - empty, still pointing
+at a folder (the same default `Config/` browse starting point as above),
+or a file that no longer exists - no longer fails with a raw error dialog
+(or, for empty, silently opens blank with no explanation) - `onBtnConfigEditor`
+checks `os.path.isfile` first and, if it's not one, asks instead: **Browse
+for config.json...** (identical to clicking "Select .json file" - loads
+the picked file into the active scene, then opens the Config Editor on
+it), **Open clean Config Editor** (starts blank, same as New), or
+**Cancel** (closes the prompt, opens nothing).
+
 ## Batch mode & batch export
 
 With `group_by_key.enabled`, the GUI shows a group-select combo (`cmbGroupByKey`,
-labeled "Group subjects by key" in the Config Editor's General tab) after
+labeled "Group specimens by key" in the Config Editor's General tab) after
 Initialize Study, populated with the unique values of `group_by_key.column`
 ("(all)" plus every value). Switching re-filters the table. **Switching is
 blocked while a specimen is active** - it must be closed first, or
 export/save could get attributed to the wrong row. This toggle is a
 **main-module viewing convenience only** - `batch_export` never depends on
-it; its own `output_dir_pattern`/`stats_output_path`/`landmarks_output_path`
+it; its own `output_dir_pattern`/`stats_output_path`/`markups_output_path`
 can reference any database.csv column directly (including this one, by
 name).
 
-A single **Batch Export** button runs
+A single **Batch Export** button (under Initialize Study, shown once a study is initialized and the config enables batch export) runs
 [`BatchProcessor`](GenericSpecimenManager/Resources/BatchProcessor.py)
-against every `done` specimen, driven entirely by `cfg.batch_export` -
+against every `finished` specimen (it reuses the already-initialized specimen list - it doesn't re-initialize the study - and stops with a message listing the status counts if none is `finished`), driven entirely by `cfg.batch_export` -
 configured on its own **Batch export** Config Editor tab (it outgrew a
 group box inside General). In one pass, any combination of:
 
 - **export_segments** - each segment exported to its own labelmap file via
   Slicer's native `ExportSegmentsToLabelmapNode` (handles overlapping
   segments correctly - each segment gets its own independently-exported
-  mask, never a shared multi-label array to misinterpret)
-- **export_markups** - the markups `.mrk.json` file, plus a per-specimen
-  landmarks CSV (`label`, `x`, `y`, `z` - world/RAS position) written
-  automatically alongside it, read straight from the live markups node via
-  `GetNthControlPointLabel()`/`GetNthControlPointPositionWorld()`. This is
-  deliberately *not* re-parsing the raw `.mrk.json` file and multiplying
-  its `orientation` field into `position` - in Slicer's markups schema,
-  `position` is already the point's full world coordinate, and
-  `orientation` is a separate, mostly-display-only local axis frame (or,
-  at the file level, just the LPS/RAS sign convention) - it is not a
-  per-point pose transform to apply on top of `position`.
-  `landmarks_report` (Config Editor label: "Landmark summary" - needs
-  `export_markups` also on) additionally combines every specimen's
-  landmarks into one or more CSVs via `landmarks_output_path` (Config
-  Editor label: "Landmark summary pattern") - same `{column}` pattern,
-  root-anchoring, and emergent grouping-by-resolved-path as
-  `stats_output_path` below.
+  mask, never a shared multi-label array to misinterpret). `segments_filter`
+  (Config Editor: Segment export settings' "Segments filter") limits which
+  segments get exported - independent of `stats_segments_filter` below.
 - **compute_stats** - custom per-segment statistics (volume, min, max,
   mean, median, std, and/or `percentile_<N>`), computed from the same
   per-segment labelmap export + `slicer.util.arrayFromVolume()` + plain
@@ -500,9 +552,35 @@ group box inside General). In one pass, any combination of:
   row per segment (an `image` column joins the key/segment columns), so
   multi-sequence studies (e.g. native/arterial/portal-phase MR) get one
   stats row per phase per segment. All sample images must share the
-  segmentation's geometry. `stats_metrics` is comma-separated in the
-  Config Editor; leave it unset to use
+  segmentation's geometry. `stats_segments_filter` (Config Editor: Segment
+  statistics settings' own "Segments filter") independently limits which
+  segments get a statistics row - a segment can be included here without
+  being exported to a file, or vice versa; `stats_metrics` is
+  comma-separated in the Config Editor; leave it unset to use
   [`Definitions.DEFAULT_STATS_METRICS`](GenericSpecimenManager/Resources/Definitions.py).
+- **export_markups** - the markups `.mrk.json` file, plus a per-specimen
+  markups CSV (`label`, `x`, `y`, `z`) written automatically alongside it,
+  read straight from the live markups node via
+  `GetNthControlPointLabel()`/`GetNthControlPointPositionWorld()`. This is
+  deliberately *not* re-parsing the raw `.mrk.json` file and multiplying
+  its `orientation` field into `position` - in Slicer's markups schema,
+  `position` is already the point's full world coordinate, and
+  `orientation` is a separate, mostly-display-only local axis frame (or,
+  at the file level, just the LPS/RAS sign convention) - it is not a
+  per-point pose transform to apply on top of `position`. `x`/`y`/`z` are
+  written in whatever convention `markups_coordinate_system` (Config
+  Editor label: "Markup CSV coordinate encoding") says - `"RAS"` (default,
+  Slicer's own world coordinate, written as-is) or `"LPS"` (flips x and y:
+  `LPS = -x, -y, z` relative to RAS - useful when the CSV feeds an
+  ITK/DICOM-based pipeline that expects LPS). This only affects the CSV
+  columns; the `.mrk.json` file itself keeps Slicer's own coordinate
+  handling untouched.
+  `markups_report` (Config Editor label: "Markup summary" - needs
+  `export_markups` also on) additionally combines every specimen's
+  markup points into one or more CSVs via `markups_output_path` (Config
+  Editor label: "Markup summary pattern") - same `{column}` pattern,
+  root-anchoring, and emergent grouping-by-resolved-path as
+  `stats_output_path` below, and the same coordinate encoding.
 
 `output_dir` (optional root: unset -> `study_dir`; relative -> resolved
 under `study_dir`; absolute -> used as-is) + `output_dir_pattern` (a
@@ -515,19 +593,32 @@ column that varies per specimen (e.g. `{batch}/{ID}`) naturally routes
 different specimens into different subfolders just by being referenced in
 the pattern.
 
-`stats_output_path` (Config Editor label: "Report pattern") is also a
-curly-brace pattern, resolved per specimen; `{date}`/`{time}`/`{datetime}`
-are substituted too, and it defaults to `report.csv`. If relative, it's
-anchored to the SAME shared root (`output_dir` if set, else `study_dir`
-directly) segment/markup files use - but, unlike those, it's **never
-nested through `output_dir_pattern`**; it's its own separate path right
-under that root. Grouping into one file or several is entirely emergent:
-specimens that resolve to the same final path share one CSV; specimens
-that resolve to different paths (the pattern references a column whose
-value differs, e.g. `{batch}/report.csv`) end up in separate files instead
-- again, no separate flag. `landmarks_output_path` (default
-`landmarks_report.csv`) works identically, independent of
-`stats_output_path` - each has its own file(s) and its own grouping.
+`stats_output_path` (Config Editor label: "Report pattern") and
+`markups_output_path` (Config Editor label: "Markup summary pattern") are
+each a curly-brace pattern, resolved per specimen, anchored directly to
+the SAME shared root (`output_dir` if set, else `study_dir` directly)
+segment/markup files use - but, unlike those, **never nested through
+`output_dir_pattern`**; each is its own separate path right under that
+root. They default to `report.csv` and `markups_report.csv` respectively,
+and each groups/overwrites independently of the other - they can even
+resolve to the same file if you point them there. Placeholders in both:
+
+- `{column}` - any key/database.csv/preseg.csv column value
+- `{date}` / `{time}` / `{datetime}` - the current date/time
+  (`YYYY-MM-DD` / `HH-MM-SS` / combined)
+- `{index}` - only if present in the pattern: the lowest-available
+  two-digit `_NN` suffix (starting at `_01`) appended before the
+  extension, based on what already exists on disk - e.g.
+  `report_{index}.csv` -> `report_01.csv`, then `report_02.csv` on the
+  next run, so a previous run's file is never clobbered. Without
+  `{index}`, a pre-existing file at the resolved path is silently
+  overwritten, exactly as before.
+
+Grouping into one file or several is entirely emergent: specimens that
+resolve to the same final path share one CSV; specimens that resolve to
+different paths (the pattern references a column whose value differs,
+e.g. `{batch}/report.csv`) end up in separate files instead - no separate
+flag needed for that.
 
 Each specimen is loaded through the **lean**
 `GenericSpecimen.load_for_batch()` path - only the segmentation plus at
@@ -600,3 +691,31 @@ good reason to make this configurable.
    [`Examples/`](GenericSpecimenManager/Examples) (not required - the files there aren't registered
    in CMake, they just document what a dedicated, named/iconed module would
    look like if one were ever needed).
+
+## Key reference
+
+Every named constant/parameter used above, in one place - what it's called,
+where you set it (config.json key and/or Config Editor field), and what it
+actually does.
+
+| Name | Where | Function |
+|---|---|---|
+| `study_dir` | General → Study dir | Root every relative path in the config resolves against. Empty → the preseg CSV's own folder. |
+| `key_columns` | General → Key columns | Composite specimen ID (e.g. `ID` or `ID,measurement`) - must exist, with matching values, in both `database.csv` and `preseg.csv`. |
+| `status_column` | General → Status column | `database.csv` column holding each specimen's status as an integer: `0` untouched, `1` in progress, `2` to review, `3` finished (created if missing). The column can have any name (e.g. `done`); the table always shows it as the last column, headed `Status`, as a dropdown that colors the row (not optional, no need to list it in `table_columns`). Batch Export processes only `3`. `1` is set automatically when a specimen loads from its own saved file or is saved; `2`/`3` are set manually (dropdown or the Close dialog). |
+| `table_columns` | General → Table columns | Which `database.csv` columns are shown/editable in the main module's specimen table. |
+| `output_dir_pattern` (top-level) | General → Output dir pattern | Per-specimen output folder for **interactive** work (segmentation/markups/saved images). Independent of `batch_export`'s own root dir/patterns below. |
+| `group_by_key.column` | General → Group specimens by key | Database column used to populate the main module's group-select combo. Viewing convenience only - has no effect on Batch export. |
+| `status_filter.enabled` | General → Filtering → Filter by status | Show the main module's Status filter (a checklist of the four statuses above the table). On by default. Viewing convenience only - Batch export ignores it. |
+| `auto_save_database` | General → Auto-save database | On = `database.csv` is written to disk after every table edit, and the manual "Save database CSV" button is hidden. Default off. |
+| `factor_columns` | General → Factor columns | Which `database.csv` columns render as a checkbox (`binary`) or a level dropdown (`multilevel`) in the main module's specimen table, instead of free text. Only takes effect for columns also listed in `table_columns`. |
+| `batch_export.output_dir` | Batch export → Batch export root dir | The root every batch pattern below is anchored to (segment/markup files, and any relative Segment export/Report/Markup summary pattern). Empty → `study_dir`. |
+| `batch_export.output_dir_pattern` | Batch export → Segment export pattern | Per-specimen subfolder, joined onto the batch root dir - governs segment + markup **file** export only. |
+| `batch_export.segments_filter` | Segment export settings → Segments filter | Which segments get exported to a labelmap file. Independent of `stats_segments_filter`. |
+| `batch_export.stats_segments_filter` | Segment statistics settings → Segments filter | Which segments get a statistics row. Independent of `segments_filter` - a segment can be in one, both, or neither. |
+| `batch_export.stats_output_path` | Segment statistics settings → Report pattern | Statistics CSV path, anchored directly to the batch root dir (never nested through the Segment export pattern). Defaults to `report.csv`. |
+| `batch_export.markups_output_path` | Markup summary settings → Markup summary pattern | Combined markup-summary CSV path, same anchoring rule as the Report pattern. Defaults to `markups_report.csv`. |
+| `batch_export.markups_coordinate_system` | Markup summary settings → Markup CSV coordinate encoding | `RAS` (default) or `LPS` - which convention the x/y/z values in the per-specimen markups CSV and the combined summary CSV use. Does not affect the `.mrk.json` file itself. |
+| `{column}` | Any path-pattern field | Any key/`database.csv`/`preseg.csv` column name in curly braces - substituted with that specimen's value. |
+| `{date}` / `{time}` / `{datetime}` | Report pattern, Markup summary pattern | Current date/time, substituted once per batch run (`YYYY-MM-DD` / `HH-MM-SS` / combined). |
+| `{index}` | Report pattern, Markup summary pattern | Only when present: a two-digit, `_01`-based counter inserted before the file extension, picking the lowest suffix not already on disk - so a previous run's file is never overwritten. Absent → existing file is overwritten as usual. |

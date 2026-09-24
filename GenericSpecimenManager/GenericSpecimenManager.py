@@ -35,9 +35,18 @@ class GenericSpecimenManager(ScriptedLoadableModule):
         self.parent.dependencies = []
         self.parent.contributors = ["Daniel Fajtai"]
         self.parent.helpText = """
-        A generic, JSON-configurable specimen loader / segmenter / landmarker.
-        Point it at a study config.json (see README.md for the schema) instead of
-        writing a new scripted module for every species / study.
+        A JSON-configurable specimen manager: load, segment and annotate a whole study
+        from one config file, instead of writing a new module per species / study.<br>
+        <ol>
+        <li>Pick the study <b>config.json</b> (or create one with <b>Config Editor</b>) and press <b>Initialize Study</b>.</li>
+        <li>Select a specimen in the table and <b>Load selected specimen</b> - its images, segmentation and markups open in the configured layout.</li>
+        <li>Segment / place markups, then <b>Save active specimen</b>. <b>Close active specimen</b> can also mark it <i>to review</i> or <i>finished</i>.</li>
+        <li>Edit the table (status, factor columns) - <b>Save database</b>, or turn on <b>Auto-save database</b>.</li>
+        <li><b>Batch export</b> processes every <i>finished</i> specimen: segment files, segment statistics, markups and a markup summary.</li>
+        </ol>
+        Full config schema and key reference:
+        <a href="https://github.com/dfajtai/GenericSpecimenManager#readme">README on GitHub</a>.
+        The same reference is also available offline: open the Config Editor and press its <b>Help</b> button.
         """
         self.parent.acknowledgementText = ""
        

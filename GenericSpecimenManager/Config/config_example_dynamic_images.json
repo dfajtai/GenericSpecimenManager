@@ -4,7 +4,7 @@
   "preseg_csv_path": "etc/img_paths.csv",
 
   "key_columns": ["sid"],
-  "table_columns": ["sid", "done"],
+  "table_columns": ["sid", "status"],
 
   "defaults": {
     "image": { "window_level": { "auto": true } }

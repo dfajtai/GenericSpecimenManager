@@ -24,10 +24,11 @@ from slicer.util import VTKObservationMixin
 
 from Resources.ConfigModel import (
     StudyConfig, ImageConfig, SegmentConfig, SegmentationConfig,
-    LandmarksConfig, VolumeRenderingEntry, load_config,
+    MarkupsConfig, VolumeRenderingEntry, load_config,
     merge_image_overrides, merge_segment_overrides,
 )
 from Resources.ConfigEditor import ConfigEditorDialog
+from Resources.HelpDialog import show_cheatsheet_dialog
 from Resources.BatchProcessor import BatchProcessor, batch_exporter
 from Resources.LoggingSetup import logger
 from Resources.Definitions import (
@@ -35,7 +36,33 @@ from Resources.Definitions import (
     HIDE_HELP_AND_ACKNOWLEDGEMENT as _DEFINITIONS_HIDE_HELP_AND_ACKNOWLEDGEMENT,
     IMAGES_READ_ONLY_BY_DEFAULT,
     DEFAULT_STATS_METRICS,
+    SPECIMEN_TABLE_MAX_VISIBLE_ROWS,
+    SPECIMEN_TABLE_MIN_VISIBLE_ROWS,
+    SpecimenStatus,
+    SPECIMEN_STATUS_LABELS,
+    SPECIMEN_STATUS_COLORS,
+    SPECIMEN_ANNOTATION_FONT_SIZE,
+    SPECIMEN_ANNOTATION_COLOR,
+    SPECIMEN_ANNOTATION_BG_COLOR,
+    SPECIMEN_ANNOTATION_BG_OPACITY,
+    SPECIMEN_ANNOTATION_BG_PADDING,
 )
+
+
+def parse_status(text):
+    """A database.csv status cell (str/int/None) -> SpecimenStatus; empty or anything unrecognized is UNTOUCHED."""
+    try:
+        return SpecimenStatus(int(str(text).strip()))
+    except (ValueError, TypeError):
+        return SpecimenStatus.UNTOUCHED
+
+
+# (label, anchor) pairs of Resources/Html/module_help_cheatsheet.html, for the Help popup's section-jump combo
+MODULE_HELP_SECTIONS = [
+    ("Workflow", "workflow"), ("Study buttons & settings", "study-settings"), ("Specimen table", "specimen-table"),
+    ("Status", "status"), ("Load, Save, Close", "load-save-close"), ("Reset selected specimen", "reset"),
+    ("Batch export", "batch-export"), ("Config", "config"),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +89,9 @@ class GenericSpecimen:
         self.volume_rendering_roi = []
 
         self.row_index = None
-        self.done_col_index = None
+        self.status_col_index = None
+        self.markups_source = None     # how the markups node came to be: "loaded" / "from template" / "new (empty)"
+        self.loaded_own_data = False   # True once a segmentation/markups file this specimen previously saved was loaded
 
     @property
     def key(self):
@@ -97,11 +126,11 @@ class GenericSpecimen:
         return os.path.join(self.study_dir, rel)
 
     def markups_out_path(self):
-        """Where this specimen's markups file lives/will be saved: landmarks.csv_column's value if set, else landmarks.path_pattern.format(...) (default '{label}-markups.mrk.json')."""
-        lm_cfg = self.cfg.landmarks
-        rel = self.preseg_info.get(lm_cfg.csv_column) if lm_cfg.csv_column else None
+        """Where this specimen's markups file lives/will be saved: markups.csv_column's value if set, else markups.path_pattern.format(...) (default '{label}-markups.mrk.json')."""
+        markups_cfg = self.cfg.markups
+        rel = self.preseg_info.get(markups_cfg.csv_column) if markups_cfg.csv_column else None
         if not rel:
-            pattern = lm_cfg.path_pattern or "{label}-markups.mrk.json"
+            pattern = markups_cfg.path_pattern or "{label}-markups.mrk.json"
             rel = pattern.format(**self._context({"label": self.label}))
         return self._to_abs(rel)
 
@@ -110,14 +139,19 @@ class GenericSpecimen:
         seg_cfg = self.cfg.segmentation
         return os.path.join(self.out_dir, seg_cfg.output_filename or "segment.seg.nrrd")
 
-    def update_done(self, table):
-        """Refresh this specimen's cached 'done' value from the live database table - call after the user edits that cell in the GUI so db_info stays in sync."""
-        if self.row_index is None or self.done_col_index is None:
+    @property
+    def status(self):
+        """This specimen's SpecimenStatus, from its cached database row (empty/unknown -> UNTOUCHED)."""
+        return parse_status(self.db_info.get(self.cfg.status_column))
+
+    def update_status(self, table):
+        """Refresh this specimen's cached status value from the live database table - call after the user edits that cell in the GUI so db_info stays in sync."""
+        if self.row_index is None or self.status_col_index is None:
             return
         try:
-            self.db_info[self.cfg.done_column] = table.GetCellText(self.row_index, self.done_col_index)
+            self.db_info[self.cfg.status_column] = table.GetCellText(self.row_index, self.status_col_index)
         except Exception as e:
-            slicer.util.errorDisplay("Failed to update done state: " + str(e))
+            slicer.util.errorDisplay("Failed to update status: " + str(e))
 
     def _expand_image_entries(self):
         """Turn cfg.images into a concrete per-specimen job list. A normal entry (csv_column/path_pattern) -> exactly one job. A 'pattern' (regex) entry -> zero or more jobs, one per non-key preseg.csv column whose name matches the regex AND is non-empty for THIS specimen - so different specimens can end up with different numbers of images."""
@@ -253,10 +287,10 @@ class GenericSpecimen:
         """Lean load path for headless batch operations (BatchProcessor):
         loads ONLY the segmentation (if configured, and only if its file
         already exists - never builds a fresh empty one here, since batch
-        operations only ever run on 'done' specimens that should already
+        operations only ever run on 'finished' specimens that should already
         have one saved) and, if given, the SPECIFIC named images in
         image_names - typically just one reference/"master" volume, not
-        the full configured image set. Unlike load(), this skips landmarks,
+        the full configured image set. Unlike load(), this skips markups,
         _customize_workplace() (crosshair/window-level/Four-Up layout),
         volume rendering, and Segment Editor activation entirely - none of
         that is needed for a headless export/stats run, and skipping it is
@@ -297,6 +331,7 @@ class GenericSpecimen:
 
         if os.path.exists(out_path):
             logger.info("[GenericSpecimen] loading existing segmentation...")
+            self.loaded_own_data = True
             seg_node = slicer.util.loadSegmentation(out_path)
             if ref_node is not None:
                 seg_node.SetReferenceImageGeometryParameterFromVolumeNode(ref_node)
@@ -314,26 +349,31 @@ class GenericSpecimen:
         self.segmentation_node = seg_node
         self.writeable["__segmentation__"] = out_path
 
-    def _load_landmarks(self, lm_cfg: LandmarksConfig):
-        """Load this specimen's markups file; if it doesn't exist yet, fall back to landmarks.template_path (if set, renamed to this specimen) or an empty new fiducial list."""
+    def _load_markups(self, markups_cfg: MarkupsConfig):
+        """Load this specimen's markups file; if it doesn't exist yet, fall back to markups.template_path (if set, renamed to this specimen) or an empty new fiducial list."""
         m_path = self.markups_out_path()
         try:
             m_node = slicer.util.loadMarkups(m_path)
+            self.loaded_own_data = True
+            self.markups_source = "loaded"
         except Exception:
-            if lm_cfg.template_path and os.path.exists(lm_cfg.template_path):
-                m_node = slicer.util.loadMarkups(lm_cfg.template_path)
+            if markups_cfg.template_path and os.path.exists(markups_cfg.template_path):
+                m_node = slicer.util.loadMarkups(markups_cfg.template_path)
                 m_node.SetName(f"{self.label}-markups")
+                self.markups_source = "from template"
             else:
                 m_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", f"{self.label}-markups")
-        if lm_cfg.color and m_node.GetDisplayNode():
-            m_node.GetDisplayNode().SetColor(*lm_cfg.color)
+                self.markups_source = "new (empty)"
+        if markups_cfg.color and m_node.GetDisplayNode():
+            m_node.GetDisplayNode().SetColor(*markups_cfg.color)
         self.markups_node = m_node
         self.node_dict["__markups__"] = m_node
-        if lm_cfg.writable if lm_cfg.writable is not None else True:
+        if markups_cfg.writable if markups_cfg.writable is not None else True:
             self.writeable["__markups__"] = m_path
 
     def load(self):
-        """Load everything configured for this specimen, in order: images (background/label/foreground slice-view layers applied once, after the loop), segmentation, landmarks, workspace setup (crosshair/blanket window-level/segment opacity/default Four-Up layout), volume rendering, then - if segment_editor is configured - hand off to the Segment Editor. Prints an itemized table of what was actually loaded (and what was skipped, with why) at the end."""
+        """Load everything configured for this specimen, in order: images (background/label/foreground slice-view layers applied once, after the loop), segmentation, markups, workspace setup (crosshair/blanket window-level/segment opacity/default Four-Up layout), volume rendering, then - if segment_editor is configured - hand off to the Segment Editor. Prints an itemized table of what was actually loaded (and what was skipped, with why) at the end."""
+        self.loaded_own_data = False
         background_node = None
         label_node, label_opacity = None, None
         foreground_node, foreground_opacity = None, None
@@ -386,13 +426,15 @@ class GenericSpecimen:
 
         seg_cfg = self.cfg.segmentation
         if seg_cfg.enabled:
+            seg_on_disk = os.path.exists(self.segmentation_out_path())
             self._load_segmentation(seg_cfg)
-            load_rows.append(("segmentation", "-", "-", "loaded" if self.segmentation_node else "skipped", self.segmentation_out_path()))
+            seg_status = ("loaded" if seg_on_disk else "new (empty)") if self.segmentation_node else "skipped"
+            load_rows.append(("segmentation", "-", "-", seg_status, self.segmentation_out_path()))
 
-        lm_cfg = self.cfg.landmarks
-        if lm_cfg.enabled:
-            self._load_landmarks(lm_cfg)
-            load_rows.append(("markups", "-", "-", "loaded" if self.markups_node else "skipped", self.markups_out_path))
+        markups_cfg = self.cfg.markups
+        if markups_cfg.enabled:
+            self._load_markups(markups_cfg)
+            load_rows.append(("markups", "-", "-", self.markups_source if self.markups_node else "skipped", self.markups_out_path()))
 
         logger.info(f"[GenericSpecimen] loaded {self.label}: {len(load_rows)} item(s) -> {self.out_dir}")
         self._print_table(f"loaded {self.label}", ["item", "type", "role", "status", "path"], load_rows)
@@ -1020,7 +1062,7 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         self.presegDictList = self._table_to_dicts(self.presegTable)
 
         key_columns = self.cfg.key_columns
-        done_col = self.cfg.done_column
+        status_col = self.cfg.status_column
         db_keys = [tuple(row.get(c, "") for c in key_columns) for row in self.dbDictList]
         preseg_keys = [tuple(row.get(c, "") for c in key_columns) for row in self.presegDictList]
         common_keys = sorted(set(db_keys).intersection(set(preseg_keys)))
@@ -1032,7 +1074,7 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
             preseg_row = next((r for r in self.presegDictList if tuple(r.get(c, "") for c in key_columns) == key), {})
             specimen = GenericSpecimen(key, self.cfg, db_row, preseg_row, self.study_dir)
             specimen.row_index = db_idx
-            specimen.done_col_index = self.dbColumnNames.index(done_col) if done_col in self.dbColumnNames else None
+            specimen.status_col_index = self.dbColumnNames.index(status_col) if status_col in self.dbColumnNames else None
             self.specimens[key] = specimen
 
         logger.info(f"[GenericSpecimenManager] initialized {len(self.specimens)} specimens")
@@ -1258,8 +1300,46 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
             rows.append(("folder", sp.out_dir))
             self.show_key_value_dialog("Specimen saved", rows)
 
+    def ensure_db_column(self, name):
+        """Add `name` as a new, empty column to the live database table if it isn't there yet -
+        used when a Table/Factor column is configured for a name that doesn't actually exist in
+        database.csv, so editing it in the GUI creates the column instead of refusing to write
+        back. Returns True once the column exists (already did, or was just added)."""
+        if name in self.dbColumnNames:
+            return True
+        if self.dbTable is None:
+            return False
+        col = vtk.vtkStringArray()
+        col.SetName(name)
+        col.SetNumberOfValues(self.dbTable.GetNumberOfRows())
+        for i in range(self.dbTable.GetNumberOfRows()):
+            col.SetValue(i, "")
+        self.dbTable.AddColumn(col)
+        self.dbColumnNames.append(name)
+        logger.info(f"[GenericSpecimenManager] added new database.csv column '{name}'")
+        return True
+
+    def set_specimen_status(self, specimen, status, only_raise=False):
+        """Write `status` (a SpecimenStatus) into the specimen's status column, in the live database table AND its cached db_info - creating the column first if it's missing. With only_raise=True a specimen already at or above `status` is left alone (automatic promotions never downgrade a manual to-review/finished). Returns True if the value actually changed."""
+        if specimen is None or specimen.row_index is None:
+            return False
+        status_col = self.cfg.status_column
+        if not self.ensure_db_column(status_col):
+            return False
+        current = specimen.status
+        if current == status or (only_raise and current >= status):
+            return False
+        real_col = self.dbColumnNames.index(status_col)
+        self.dbTable.SetCellText(specimen.row_index, real_col, str(int(status)))
+        written = self.dbTable.GetCellText(specimen.row_index, real_col)
+        if written != str(int(status)):
+            logger.warning(f"[GenericSpecimenManager] status write to '{status_col}' did not stick (read back '{written}') - is the column numeric?")
+        specimen.db_info[status_col] = str(int(status))
+        specimen.status_col_index = real_col
+        return True
+
     def save_db(self, inform_user=True):
-        """Write the live database table back to its CSV file; optionally show a confirmation popup."""
+        """Write the live database table back to its CSV file; optionally show a confirmation popup. Always logged at DEBUG level (not INFO), since this can fire silently and often - e.g. Auto-save database after every table edit."""
         db_path = self.getParameterNode().GetParameter("DatabaseCSVPath")
         storage = self.dbTable.CreateDefaultStorageNode()
         storage.SetHideFromEditors(True)
@@ -1267,6 +1347,7 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         storage.WriteData(self.dbTable)
         if slicer.mrmlScene.IsNodePresent(storage):
             slicer.mrmlScene.RemoveNode(storage)
+        logger.debug(f"[GenericSpecimenManager] saved database CSV -> {db_path}")
         if inform_user:
             self.show_key_value_dialog("Database saved", [("path", db_path)])
 
@@ -1279,6 +1360,19 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
 # ---------------------------------------------------------------------------
 # GenericSpecimenManagerWidgetBase
 # ---------------------------------------------------------------------------
+
+class _ViewportResizeFilter(qt.QObject):
+    """Event filter that calls `callback` whenever the watched widget is resized - used to re-fit
+    the specimen table when the module panel's scroll-area viewport changes size."""
+    def __init__(self, callback, parent=None):
+        qt.QObject.__init__(self, parent)
+        self._callback = callback
+
+    def eventFilter(self, obj, event):
+        if event.type() == qt.QEvent.Resize:
+            qt.QTimer.singleShot(0, self._callback)
+        return False
+
 
 class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
@@ -1309,6 +1403,11 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         self.table_lock = False
         self._displayed_keys = []
         self._group_filter = None
+        self._status_filter = None               # set of SpecimenStatus ticked in the status filter, None = all (no filtering)
+        self._annotationActors = []              # (view, renderer, vtkTextActor) of the specimen annotation, if shown
+        self._studyInitialized = False           # True only after a fully successful Initialize Study
+        self._active_specimen_observed = None    # the GenericSpecimen currently wired to _onActiveSpecimenNodeModified, if any
+        self._displacedSaveActions = []          # (QAction, QKeySequence) of Slicer's own Ctrl+S actions while this module owns the shortcut
 
     def setup(self):
         """Slicer calls this once when the module widget is first shown: load the .ui, wire every button/field, hide the config picker if CONFIG_PATH locks this wrapper to one study, and initialize the parameter node."""
@@ -1316,6 +1415,7 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         uiWidget = slicer.util.loadUI(self.resourcePath(self.UI_RESOURCE))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
+        self._uiWidget = uiWidget
         uiWidget.setMRMLScene(slicer.mrmlScene)
 
         self.logic = GenericSpecimenManagerLogic()
@@ -1339,12 +1439,30 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         self.ui.btnSelectPreseg.connect('clicked(bool)', self.onBtnSelectPreseg)
         self.ui.btnBatchExport.connect('clicked(bool)', self.onBtnBatchExport)
         self.ui.btnConfigEditor.connect('clicked(bool)', self.onBtnConfigEditor)
+        # Ctrl+S runs this module's save while a specimen is loaded (enabled only then - see
+        # _syncSaveShortcut). It collides with Slicer's own Save scene shortcut, so both the
+        # normal and the 'ambiguous' activation are handled.
+        self._saveShortcut = qt.QShortcut(qt.QKeySequence("Ctrl+S"), slicer.util.mainWindow())
+        self._saveShortcut.setContext(qt.Qt.ApplicationShortcut)
+        self._saveShortcut.enabled = False
+        self._saveShortcut.connect('activated()', self._onSaveShortcut)
+        self._saveShortcut.connect('activatedAmbiguously()', self._onSaveShortcut)
+        self.ui.btnModuleHelp.connect('clicked(bool)', lambda checked=False: show_cheatsheet_dialog(
+            slicer.util.mainWindow(), "Generic Specimen Manager - Cheat Sheet", "module_help_cheatsheet.html", MODULE_HELP_SECTIONS))
         self.ui.btnLoadSelected.connect('clicked(bool)', self.onBtnLoadSelected)
         self.ui.btnSaveActiveSpecimen.connect('clicked(bool)', self.onBtnSaveActiveSpecimen)
         self.ui.btnCloseActiveSpecimen.connect('clicked(bool)', self.onBtnCloseActiveSpecimen)
+        self.ui.btnResetSelectedSpecimen.connect('clicked(bool)', self.onBtnResetSelectedSpecimen)
         self.ui.btnSaveDB.connect('clicked(bool)', self.onBtnSaveDB)
+        self.ui.studySettingsCollapsibleButton.connect('toggled(bool)', lambda checked=False: qt.QTimer.singleShot(0, self._fitSpecimenTableHeight))
+        self.ui.helpCollapsibleButton.connect('toggled(bool)', lambda checked=False: qt.QTimer.singleShot(0, self._fitSpecimenTableHeight))
+        self.ui.wOps.connect('toggled(bool)', lambda checked=False: qt.QTimer.singleShot(0, self._fitSpecimenTableHeight))
         self.ui.cmbGroupByKey.currentTextChanged.connect(self.onGroupByKeyChanged)
         self.ui.wGroupByKey.visible = False
+        for st in SpecimenStatus:
+            self.ui.cmbStatusFilter.addItem(SPECIMEN_STATUS_LABELS[st])
+        self._checkAllStatusFilter()
+        self.ui.cmbStatusFilter.checkedIndexesChanged.connect(self.onStatusFilterChanged)
 
         if self.CONFIG_PATH:
             self.ui.lblConfig.visible = False
@@ -1359,14 +1477,100 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
             self.reloadCollapsibleButton.hide()
 
         self.initializeParameterNode()
+        self._updatePostInitButtonStates()
+        self._fitSpecimenTableHeight()
+
+    def _clearSpecimenAnnotation(self):
+        """Remove the yellow specimen-data text actors from every view."""
+        for view, renderer, actor in self._annotationActors:
+            try:
+                renderer.RemoveViewProp(actor)
+                view.scheduleRender()
+            except Exception:
+                pass
+        self._annotationActors = []
+
+    def _refreshSpecimenAnnotation(self):
+        """(Re)draw the active specimen's database row as yellow text, top-left, in the Red/
+        Yellow/Green and 3D views - only if workspace.specimen_annotation is on and a specimen is
+        loaded (otherwise just clears). Layout: the ID (key columns joined with '-'), a rule, one
+        'column: value' line per remaining table_columns entry (status column excluded), a rule, then
+        the status line.
+        Own vtkTextActor (not the shared corner annotation) so DataProbe can't overwrite it."""
+        self._clearSpecimenAnnotation()
+        cfg = self.logic.cfg if self.logic else None
+        if cfg is None or not cfg.workspace.specimen_annotation or not self.logic.hasActiveSpecimen:
+            return
+        sp = self.logic.active_specimen
+        id_line = "-".join(str(v) for v in sp.key_values)
+        kv_lines = [f"{col}: {sp.db_info.get(col, '')}" for col in cfg.table_columns
+                    if col not in cfg.key_columns and col != cfg.status_column]
+        status_line = SPECIMEN_STATUS_LABELS[sp.status]
+        width = max(len(l) for l in [id_line, status_line] + kv_lines)
+        rule = "-" * width
+        lines = [id_line, rule] + (kv_lines + [rule] if kv_lines else []) + [status_line]
+        text = "\n".join(lines)
+        try:
+            lm = slicer.app.layoutManager()
+            views = [lm.sliceWidget(n).sliceView() for n in lm.sliceViewNames()]
+            views.append(lm.threeDWidget(0).threeDView())
+            for view in views:
+                renderer = view.renderWindow().GetRenderers().GetFirstRenderer()
+                actor = vtk.vtkTextActor()
+                actor.SetInput(text)
+                prop = actor.GetTextProperty()
+                prop.SetColor(*SPECIMEN_ANNOTATION_COLOR)
+                prop.SetFontSize(SPECIMEN_ANNOTATION_FONT_SIZE)
+                prop.SetBackgroundColor(*SPECIMEN_ANNOTATION_BG_COLOR)
+                prop.SetBackgroundOpacity(SPECIMEN_ANNOTATION_BG_OPACITY)
+                if hasattr(prop, "SetBackgroundPadding"):   # VTK 9+
+                    prop.SetBackgroundPadding(SPECIMEN_ANNOTATION_BG_PADDING)
+                prop.SetVerticalJustificationToTop()
+                actor.GetPositionCoordinate().SetCoordinateSystemToNormalizedViewport()
+                actor.SetPosition(0.01, 0.98)
+                renderer.AddViewProp(actor)
+                self._annotationActors.append((view, renderer, actor))
+                view.scheduleRender()
+        except Exception as e:
+            logger.warning(f"[GenericSpecimenManager] could not draw specimen annotation: {e}")
+
+    def _updatePostInitButtonStates(self):
+        """Enable/disable/show the controls that only make sense once a study has actually been
+        initialized: Load selected specimen, Save progress, Close active specimen, Reset and the
+        Status filter start disabled, and Save database CSV / Batch export start hidden (each
+        shown only if the config wants it) - so a clean/blank module can't be clicked into a
+        confusing failure before Initialize Study has run. The Initialize Study button itself is
+        pastel green until a study is initialized. Called after setup(), after a successful
+        Initialize Study, and after every load/save/close of the active specimen."""
+        ready = self.logic is not None and self.logic.cfg is not None and self._studyInitialized
+        active = ready and self.logic.hasActiveSpecimen
+        # Initialize Study nudges (pastel green) until a study is initialized; then the buttons
+        # that need one appear below it - Save database CSV unless the config auto-saves it,
+        # Batch export only if the config enables it.
+        self.ui.btnInitializeStudy.setStyleSheet("" if ready else "QPushButton { background-color: #cdeccd; color: black; }")
+        self.ui.btnSaveDB.visible = bool(ready and not self.logic.cfg.auto_save_database)
+        self.ui.btnBatchExport.visible = bool(ready and self.logic.cfg.batch_export.enabled)
+        self.ui.cmbStatusFilter.enabled = ready
+        self.ui.btnLoadSelected.enabled = ready and not active
+        self.ui.btnSaveActiveSpecimen.enabled = active
+        self.ui.btnCloseActiveSpecimen.enabled = active
+        self.ui.btnResetSelectedSpecimen.enabled = ready
+        self._syncSaveShortcut()
 
     def cleanup(self):
         """Standard ScriptedLoadableModuleWidget hook: Slicer calls this when the widget is being destroyed."""
         self.removeObservers()
+        shortcut = getattr(self, "_saveShortcut", None)
+        if shortcut is not None:
+            shortcut.enabled = False
+            shortcut.deleteLater()
+            self._saveShortcut = None
+        self._restoreSlicerSaveShortcut()
 
     def enter(self):
         """Standard hook: Slicer calls this every time the user switches into this module."""
         self.initializeParameterNode()
+        self._installScrollAreaWatch()
         if self.HIDE_HELP_AND_ACKNOWLEDGEMENT:
             self._setHelpSectionVisible(False)
 
@@ -1387,6 +1591,9 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         """Close the active specimen (without confirmation - the scene is going away regardless) before the MRML scene is actually torn down."""
         if self.logic and self.logic.hasActiveSpecimen:
             self.logic.close_active_specimen(no_question=True)
+            self._detach_active_specimen_observers()
+            self._clearSpecimenAnnotation()
+            self._syncSaveShortcut()
         self.setParameterNode(None)
 
     def onSceneEndClose(self, caller, event):
@@ -1472,12 +1679,77 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
             slicer.util.errorDisplay(f"Failed to load config: {e}")
 
     def onBtnConfigEditor(self):
-        """Open the Config Editor, pre-loaded with whatever config is currently active in this module. Passes _loadConfigIntoScene as the post-save reload hook, so Save can offer to push the change live."""
-        current_path = str(self.ui.tbConfigPath.text).strip() or None
-        self._configEditorDialog = ConfigEditorDialog(slicer.util.mainWindow(), initial_path=current_path, on_saved=self._loadConfigIntoScene)
+        """Open the Config Editor, pre-loaded with whatever config is currently active in this module. Passes _loadConfigIntoScene as the post-save reload hook, so Save can offer to push the change live. If the current config path field doesn't point at an actual file - empty, still the default Config/ folder from a clean start, or a path that's been moved/deleted - offers a real choice instead of letting the Config Editor fail with a raw error popup (or, for empty, silently open blank with no explanation)."""
+        current_path = str(self.ui.tbConfigPath.text).strip()
+        if not os.path.isfile(current_path):
+            self._promptInvalidConfigPath(current_path)
+            return
+        self._openConfigEditor(current_path)
+
+    def _openConfigEditor(self, initial_path):
+        """Actually construct and show the Config Editor, given an already-validated (or intentionally None) initial path."""
+        self._configEditorDialog = ConfigEditorDialog(slicer.util.mainWindow(), initial_path=initial_path, on_saved=self._loadConfigIntoScene)
         self._configEditorDialog.setWindowModality(qt.Qt.NonModal)
         self._configEditorDialog.show()
-        self._configEditorDialog.raise_()
+
+    def _showStudySetupPrompt(self, message, browse_path=""):
+        """Shared 3-button prompt (Browse for config.json / Open clean Config Editor / Cancel) for
+        anywhere the module needs a valid, fully-set-up config but doesn't have one yet - replaces
+        a dead-end warningDisplay with something actionable. Returns 'browse', 'editor', or None
+        (Cancel or the dialog closed another way)."""
+        box = qt.QMessageBox(slicer.util.mainWindow())
+        box.setIcon(qt.QMessageBox.Question)
+        box.setWindowTitle("Study Settings")
+        box.setText(message)
+        browseBtn = box.addButton("Browse for config.json...", qt.QMessageBox.AcceptRole)
+        editorBtn = box.addButton("Open clean Config Editor", qt.QMessageBox.ActionRole)
+        box.addButton("Cancel", qt.QMessageBox.RejectRole)
+        box.setDefaultButton(browseBtn)
+        box.exec_()
+        clicked = box.clickedButton()
+        if clicked is browseBtn:
+            fname = QFileDialog.getOpenFileName(None, 'Open config', browse_path, "JSON files (*.json)")
+            return "browse" if fname else None, fname
+        if clicked is editorBtn:
+            return "editor", None
+        return None, None
+
+    def _promptInvalidConfigPath(self, path):
+        """The config path field doesn't point at a loadable config.json - empty, a folder (most
+        commonly the default Config/ browse starting point on a clean Slicer start), or a file
+        that no longer exists - ask what to do instead of opening the Config Editor straight into
+        a load failure, or silently opening it blank with no explanation."""
+        if not path:
+            what = "empty - no config selected yet"
+        elif os.path.isdir(path):
+            what = "a folder"
+        else:
+            what = "a file that no longer exists"
+        detail = f":\n\n{path}" if path else ""
+        choice, fname = self._showStudySetupPrompt(
+            f"The current config path is {what}{detail}.\n\nWhat would you like to do?", browse_path=path)
+        if choice == "browse":
+            self._loadConfigIntoScene(fname)
+            self._openConfigEditor(fname)
+        elif choice == "editor":
+            self._openConfigEditor(None)
+        # Cancel (or the dialog closed another way): do nothing, no Config Editor opens.
+
+    def _promptStudyNotReady(self, reason):
+        """Same 3-button prompt as _promptInvalidConfigPath, used from Initialize Study whenever
+        it can't proceed because the config/CSV setup isn't complete yet (empty/invalid config
+        path, or the database/preseg CSV paths are empty) - Browse starts from the current Study
+        config field's path (same as 'Select .json file'), loads the picked config straight into
+        the scene (no Config Editor involved), and immediately retries Initialize Study so picking
+        a valid config actually finishes the job in one go. Open clean Config Editor opens a blank
+        one to build a config from scratch instead."""
+        current_path = str(self.ui.tbConfigPath.text).strip()
+        choice, fname = self._showStudySetupPrompt(f"{reason}\n\nWhat would you like to do?", browse_path=current_path)
+        if choice == "browse":
+            self._loadConfigIntoScene(fname)
+            self.onBtnInitializeStudy()
+        elif choice == "editor":
+            self._openConfigEditor(None)
 
     def onBtnSelectDB(self):
         """Browse for an override Database CSV path (normally this is auto-filled from the loaded config)."""
@@ -1569,17 +1841,19 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
                     slicer.util.errorDisplay("Failed to save before re-initializing: " + str(e))
                     return
             self.logic.close_active_specimen(no_question=True)
-            self.ui.btnLoadSelected.enabled = True
-            self.ui.lblActiveSpecimen.text = ""
+            self._detach_active_specimen_observers()
+            self._updatePostInitButtonStates()
+            self._refresh_specimen_status_labels()
+            self._refreshSpecimenAnnotation()
 
         try:
             if self.logic.cfg is None:
                 config_path = str(self.ui.tbConfigPath.text).strip() or self.CONFIG_PATH
                 if not config_path:
-                    slicer.util.warningDisplay("No study config selected yet. Choose a config.json first (or use the Config Editor to build one).")
+                    self._promptStudyNotReady("No study config selected yet.")
                     return
                 if not os.path.exists(config_path):
-                    slicer.util.warningDisplay(f"Config file not found:\n{config_path}")
+                    self._promptStudyNotReady(f"Config file not found:\n{config_path}")
                     return
                 if os.path.isdir(config_path):
                     # This is the Config/ folder pre-filled as a Browse starting
@@ -1587,10 +1861,7 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
                     # actually picked as a file. Opening a directory as a config
                     # raises IsADirectoryError, which used to surface as a
                     # confusing generic "Failed to load config" message.
-                    slicer.util.warningDisplay(
-                        "That's a folder, not a config file yet:\n"
-                        f"{config_path}\n\n"
-                        "Click 'Select .json file' and pick a specific config.json inside it.")
+                    self._promptStudyNotReady(f"That's a folder, not a config file yet:\n{config_path}")
                     return
                 self.logic.load_config(config_path)
         except Exception as e:
@@ -1600,7 +1871,7 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         db_path = str(self.ui.tbDBPath.text).strip()
         preseg_path = str(self.ui.tbPresegPath.text).strip()
         if not db_path or not preseg_path:
-            slicer.util.warningDisplay(
+            self._promptStudyNotReady(
                 "Database CSV and Preseg CSV paths must both be set. They're normally filled in "
                 "automatically from the config - if they're empty, the loaded config may be missing "
                 "database_csv_path/preseg_csv_path, or you cleared the fields by hand.")
@@ -1618,17 +1889,76 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
             return
 
         try:
+            self._studyInitialized = False
             self.logic.initializeStudy()
+            if not self._resolveMissingDbColumns():
+                self.logic.specimens = {}
+                self.ui.tblSpecimens.setRowCount(0)
+                self._updatePostInitButtonStates()
+                return
+            self._studyInitialized = True
             self._group_filter = None
             self._setup_batch_combo()
             self.show_specimen_table()
+            self._updatePostInitButtonStates()
         except Exception as e:
             slicer.util.errorDisplay("Failed to initialize study: " + str(e))
             import traceback
             traceback.print_exc()
 
+    def _resolveMissingDbColumns(self):
+        """Right after the tables load: any configured Factor column missing from database.csv is
+        surely intentional (not a typo), so offer to create it; a plain table_columns entry that's
+        missing MAY be a typo, so those are listed separately and only created if explicitly
+        ticked. Returns False if the user cancels (Initialize Study is then aborted), else True
+        with the chosen columns already added to the live database table."""
+        cfg = self.logic.cfg
+        existing = set(self.logic.dbColumnNames)
+        factor_cols = [fc.column for fc in cfg.factor_columns if fc.column and fc.column not in existing]
+        if cfg.status_column not in existing and cfg.status_column not in factor_cols:
+            factor_cols.insert(0, cfg.status_column)   # the status column is never a typo - always offered for creation
+        table_cols = [c for c in cfg.table_columns if c not in existing and c not in factor_cols]
+        if not factor_cols and not table_cols:
+            return True
+
+        dlg = qt.QDialog(slicer.util.mainWindow())
+        dlg.setWindowTitle("Columns missing from database.csv")
+        layout = qt.QVBoxLayout(dlg)
+        layout.addWidget(qt.QLabel("Some configured columns don't exist in the database CSV yet."))
+        if factor_cols:
+            lbl = qt.QLabel("<b>Status / factor columns</b> - will be created (empty):<br>" + ", ".join(factor_cols))
+            lbl.setWordWrap(True)
+            layout.addWidget(lbl)
+        table_checks = []
+        if table_cols:
+            layout.addWidget(qt.QLabel("<b>Table columns</b> - possibly typos; tick only the ones to create:"))
+            for c in table_cols:
+                chk = qt.QCheckBox(c)
+                table_checks.append(chk)
+                layout.addWidget(chk)
+        btnRow = qt.QHBoxLayout()
+        addBtn = qt.QPushButton("Add columns and continue")
+        addBtn.connect('clicked(bool)', lambda checked=False: dlg.accept())
+        cancelBtn = qt.QPushButton("Cancel initialization")
+        cancelBtn.connect('clicked(bool)', lambda checked=False: dlg.reject())
+        btnRow.addStretch(1)
+        btnRow.addWidget(addBtn)
+        btnRow.addWidget(cancelBtn)
+        layout.addLayout(btnRow)
+        if dlg.exec_() != qt.QDialog.Accepted:
+            return False
+
+        added = list(factor_cols) + [c for c, chk in zip(table_cols, table_checks) if chk.checked]
+        for c in added:
+            self.logic.ensure_db_column(c)
+        if added:
+            self.logic.save_db(inform_user=False)   # write the new columns to database.csv right away
+        return True
+
     def _setup_batch_combo(self):
         """Show/hide the group-select row and (re)populate its combo box from cfg.group_by_key, based on the just-initialized specimen list."""
+        self.ui.wStatusFilter.visible = bool(self.logic.cfg.status_filter.enabled)
+        self._checkAllStatusFilter()
         gbk_cfg = self.logic.cfg.group_by_key
         self.ui.wGroupByKey.visible = bool(gbk_cfg.enabled)
         if not gbk_cfg.enabled:
@@ -1640,6 +1970,22 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         for v in values:
             self.ui.cmbGroupByKey.addItem(v)
         self.ui.cmbGroupByKey.blockSignals(False)
+
+    def _checkAllStatusFilter(self):
+        """Tick every status in the status filter (= no filtering), without re-filtering the table for each tick."""
+        combo = self.ui.cmbStatusFilter
+        combo.blockSignals(True)
+        for i in range(len(SpecimenStatus)):
+            combo.setCheckState(combo.model().index(i, 0), qt.Qt.Checked)
+        combo.blockSignals(False)
+        self._status_filter = None
+
+    def onStatusFilterChanged(self):
+        """Re-filter the specimen table by the statuses ticked in the status filter (all ticked = no filtering)."""
+        ticked = {SpecimenStatus(idx.row()) for idx in self.ui.cmbStatusFilter.checkedIndexes()}
+        self._status_filter = None if len(ticked) == len(SpecimenStatus) else ticked
+        if self.logic is not None and self.logic.cfg is not None and self._studyInitialized:
+            self.show_specimen_table()
 
     def onGroupByKeyChanged(self, text):
         """Re-filter the specimen table by the newly selected batch value. Refuses (and reverts the combo back) while a specimen is currently active."""
@@ -1653,17 +1999,23 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         self.show_specimen_table()
 
     def show_specimen_table(self):
-        """(Re)draw the specimen table: one row per specimen (optionally filtered to the current batch), with 'done' rows highlighted green."""
+        """(Re)draw the specimen table: one row per specimen (optionally filtered to the current
+        batch), rows colored by status (SPECIMEN_STATUS_COLORS). The status column is a dropdown of the four statuses. Any column also listed in cfg.factor_columns
+        renders as a checkbox (binary) or a level dropdown (multilevel) instead of free text - see
+        _onFactorMultilevelChanged() for the dropdown's write-back path (cell widgets don't fire
+        itemChanged, so specimen_tbl_changed() alone doesn't cover them)."""
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
         wasModified = self._parameterNode.StartModify()
 
         cfg = self.logic.cfg
-        columns = cfg.table_columns
+        columns = self._displayColumns()
         keys = sorted(self.logic.specimens.keys())
         if self._group_filter is not None and cfg.group_by_key.enabled:
             col = cfg.group_by_key.column
             keys = [k for k in keys if self.logic.specimens[k].db_info.get(col, "") == self._group_filter]
+        if self._status_filter is not None:
+            keys = [k for k in keys if self.logic.specimens[k].status in self._status_filter]
         self._displayed_keys = keys
 
         tbl = self.ui.tblSpecimens
@@ -1672,19 +2024,126 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
         tbl.setColumnCount(len(columns))
         tbl.setRowCount(len(keys))
 
-        done_col = cfg.done_column
-        for i, key in enumerate(keys):
-            specimen = self.logic.specimens[key]
-            specimen.update_done(self.logic.dbTable)
-            for j, col in enumerate(columns):
-                tbl.setItem(i, j, qt.QTableWidgetItem(specimen.db_info.get(col, "")))
-            if specimen.db_info.get(done_col) == str(1):
-                for j in range(tbl.columnCount):
-                    tbl.item(i, j).setBackground(qt.QColor(0, 127, 0))
+        # Populating the table below fires itemChanged (checkbox items) and currentTextChanged
+        # (multilevel combos) once per cell, exactly like a real user edit would - table_lock
+        # blocks specimen_tbl_changed()/_onFactorMultilevelChanged() from treating this initial
+        # fill-in as hundreds of individual edits (and, before this guard, bogus "column not
+        # present" warnings for freshly-added factor columns not yet in the live table).
+        self.table_lock = True
+        try:
+            status_col = cfg.status_column
+            factor_by_col = {fc.column: fc for fc in cfg.factor_columns}
+            for i, key in enumerate(keys):
+                specimen = self.logic.specimens[key]
+                specimen.update_status(self.logic.dbTable)
+                for j, col in enumerate(columns):
+                    factor = factor_by_col.get(col)
+                    if col == status_col:
+                        combo = qt.QComboBox()
+                        for st in SpecimenStatus:
+                            combo.addItem(SPECIMEN_STATUS_LABELS[st])
+                        combo.currentIndex = int(specimen.status)
+                        combo.currentIndexChanged.connect(lambda index, r=i: self._onStatusComboChanged(r, index))
+                        tbl.setCellWidget(i, j, combo)
+                    elif factor is not None and factor.type == "binary":
+                        item = qt.QTableWidgetItem()
+                        item.setFlags(qt.Qt.ItemIsUserCheckable | qt.Qt.ItemIsEnabled | qt.Qt.ItemIsSelectable)
+                        checked = specimen.db_info.get(col) == str(1)
+                        item.setCheckState(qt.Qt.Checked if checked else qt.Qt.Unchecked)
+                        item.setTextAlignment(qt.Qt.AlignCenter)
+                        tbl.setItem(i, j, item)
+                    elif factor is not None and factor.type == "multilevel":
+                        combo = qt.QComboBox()
+                        combo.addItem("(unset)")
+                        combo.addItems(factor.levels)
+                        current = specimen.db_info.get(col, "") or ""
+                        if current and current not in factor.levels:
+                            combo.addItem(current)  # value on disk isn't in the configured levels - show it anyway rather than silently dropping it
+                        combo.currentText = current if current else "(unset)"
+                        combo.currentTextChanged.connect(lambda text, r=i, cn=col: self._onFactorMultilevelChanged(r, cn, text))
+                        tbl.setCellWidget(i, j, combo)
+                    else:
+                        tbl.setItem(i, j, qt.QTableWidgetItem(specimen.db_info.get(col, "")))
+                self._applyStatusRowStyle(i, specimen.status)
+        finally:
+            self.table_lock = False
 
-        tbl.setHorizontalHeaderLabels(columns)
+        tbl.setHorizontalHeaderLabels(["Status" if c == cfg.status_column else c for c in columns])
         tbl.resizeColumnsToContents()
+        if self.tbl_selected_key in keys:   # a redraw (filter change etc.) keeps the selected specimen selected
+            tbl.selectRow(keys.index(self.tbl_selected_key))
+        self._fitSpecimenTableHeight()
+        self._refresh_specimen_status_labels()
         self._parameterNode.EndModify(wasModified)
+
+    @staticmethod
+    def _qtValue(v):
+        """PythonQt exposes some Qt getters as plain attributes and others as methods - accept either."""
+        return v() if callable(v) else v
+
+    def _findScrollArea(self):
+        """The QScrollArea Slicer wraps this module's panel in, if any."""
+        w = self._uiWidget.parent() if callable(self._uiWidget.parent) else self._uiWidget.parent
+        while w is not None:
+            try:
+                if w.inherits("QScrollArea"):
+                    return w
+            except Exception:
+                pass
+            w = w.parent() if callable(w.parent) else w.parent
+        return None
+
+    def _installScrollAreaWatch(self):
+        """Re-fit the specimen table whenever the module panel is resized (idempotent)."""
+        if getattr(self, "_scrollWatch", None) is not None:
+            return
+        area = self._findScrollArea()
+        if area is None:
+            return
+        self._scrollWatch = _ViewportResizeFilter(self._fitSpecimenTableHeight, self._uiWidget)
+        area.viewport().installEventFilter(self._scrollWatch)
+        self._fitSpecimenTableHeight()
+
+    def _availableTableHeight(self):
+        """Pixels the specimen table can use without making the whole module panel scroll:
+        the panel viewport's height minus everything else in the module's layout. None if the
+        panel/scroll area can't be determined (then only the row-count cap applies)."""
+        try:
+            area = self._findScrollArea()
+            if area is None:
+                return None
+            tbl = self.ui.tblSpecimens
+            self._uiWidget.layout().activate()
+            others = self._qtValue(self._qtValue(self._uiWidget.sizeHint).height) - self._qtValue(tbl.height)
+            return self._qtValue(area.viewport().height) - others - 8
+        except Exception as e:
+            logger.debug(f"[GenericSpecimenManager] could not measure available table height: {e}")
+            return None
+
+    def _fitSpecimenTableHeight(self):
+        """Size the specimen table to exactly fit its current row count (header + rows, no empty
+        space when there are only a few specimens/after a Group filter) - up to
+        SPECIMEN_TABLE_MAX_VISIBLE_ROWS (Definitions.py) AND up to the space actually left in the
+        module panel, so the WHOLE module never becomes scrollable because of this table; it
+        scrolls internally instead. Never below SPECIMEN_TABLE_MIN_VISIBLE_ROWS rows either - even
+        empty (before Initialize Study), so the panel doesn't look collapsed.
+        Re-run on panel resize and when the Study settings, Specimen browser or Help block is expanded/collapsed."""
+        tbl = self.ui.tblSpecimens
+        row_h = tbl.verticalHeader().defaultSectionSize
+        header_h = tbl.horizontalHeader().height
+        pad = 2 * tbl.frameWidth + 4
+        fit_h = header_h + row_h * tbl.rowCount + pad
+        max_h = header_h + row_h * SPECIMEN_TABLE_MAX_VISIBLE_ROWS + pad
+        min_h = header_h + row_h * SPECIMEN_TABLE_MIN_VISIBLE_ROWS + pad
+        capped_h = max(min(fit_h, max_h), min_h)   # min_h floor applies even with 0 rows (before Initialize Study)
+        # measure "everything else" with the table at its natural (smallest) size first
+        tbl.setMinimumHeight(0)
+        tbl.setMaximumHeight(16777215)
+        available = self._availableTableHeight()
+        if available is not None:
+            capped_h = min(capped_h, max(available, min_h))
+        tbl.setMinimumHeight(int(capped_h))
+        tbl.setMaximumHeight(int(capped_h))
 
     def selected_specimen_changed(self):
         """Track which specimen row is currently selected, by KEY (not row index, since row order can change) - used by the Load button."""
@@ -1693,29 +2152,103 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
             return
         row = sel[0].row()
         key_columns = self.logic.cfg.key_columns
-        columns = self.logic.cfg.table_columns
+        columns = self._displayColumns()
         key = tuple(self.ui.tblSpecimens.item(row, columns.index(c)).text() for c in key_columns)
         self.tbl_selected_key = key
-        self.ui.lblSelectedSpecimen.text = "-".join(key)
+        self._refresh_specimen_status_labels()
 
-    def specimen_tbl_changed(self):
-        """Write a manually-edited table cell back to the underlying database vtkTable, by column NAME + the specimen's real row_index - deliberately not by the widget's row/column position, which can differ from the raw CSV's order once the table is sorted/filtered by key or batch."""
+    @staticmethod
+    def _status_dot(color):
+        """A small colored bullet, as a rich-text prefix for a status label."""
+        return f'<span style="color:{color};">●</span> '
+
+    def _specimen_is_dirty(self, specimen):
+        """True if this specimen's segmentation and/or markups node has unsaved changes, via the
+        standard MRML GetModifiedSinceRead() check (same mechanism GenericSpecimen.save() itself
+        uses for images - see _node_has_changed())."""
+        for node in (specimen.segmentation_node, specimen.markups_node):
+            if node is not None:
+                try:
+                    if node.GetModifiedSinceRead():
+                        return True
+                except Exception:
+                    pass
+        return False
+
+    def _refresh_specimen_status_labels(self):
+        """Update the colored status dot in front of the Selected/Active specimen labels: gray =
+        the selected table row isn't the currently active specimen, green = it is (or this IS the
+        Active label) and clean, orange = it is (or Active) with unsaved segmentation/markups
+        changes. Called on table selection, after load/save/close, and whenever the active
+        specimen's segmentation/markups node fires a Modified event (see
+        _attach_active_specimen_observers())."""
+        active = self.logic.active_specimen if self.logic.hasActiveSpecimen else None
+        active_dirty = self._specimen_is_dirty(active) if active is not None else False
+
+        if self.tbl_selected_key is not None:
+            color = "#999999"
+            if active is not None and self.tbl_selected_key == active.key:
+                color = "#d98c00" if active_dirty else "#2e8b2e"
+            self.ui.lblSelectedSpecimen.text = self._status_dot(color) + "-".join(self.tbl_selected_key)
+
+        if active is not None:
+            color = "#d98c00" if active_dirty else "#2e8b2e"
+            self.ui.lblActiveSpecimen.text = self._status_dot(color) + active.label
+        else:
+            self.ui.lblActiveSpecimen.text = ""
+
+    def _attach_active_specimen_observers(self):
+        """Observe the active specimen's segmentation/markups nodes for Modified events, so the
+        status dot flips to 'unsaved changes' live instead of only on the next table click. A
+        no-op if already observing this exact specimen."""
+        if not self.logic.hasActiveSpecimen:
+            return
+        specimen = self.logic.active_specimen
+        if self._active_specimen_observed is specimen:
+            return
+        self._detach_active_specimen_observers()
+        for node in (specimen.segmentation_node, specimen.markups_node):
+            if node is not None:
+                self.addObserver(node, vtk.vtkCommand.ModifiedEvent, self._onActiveSpecimenNodeModified)
+        self._active_specimen_observed = specimen
+
+    def _detach_active_specimen_observers(self):
+        """Stop observing whatever specimen _attach_active_specimen_observers() last wired up - call before/after closing the active specimen."""
+        specimen = self._active_specimen_observed
+        if specimen is None:
+            return
+        for node in (specimen.segmentation_node, specimen.markups_node):
+            if node is not None:
+                self.removeObserver(node, vtk.vtkCommand.ModifiedEvent, self._onActiveSpecimenNodeModified)
+        self._active_specimen_observed = None
+
+    def _onActiveSpecimenNodeModified(self, caller=None, event=None):
+        self._refresh_specimen_status_labels()
+
+    def specimen_tbl_changed(self, changed_item=None):
+        """Write a manually-edited table cell back to the underlying database vtkTable, by column
+        NAME + the specimen's real row_index - deliberately not by the widget's row/column
+        position, which can differ from the raw CSV's order once the table is sorted/filtered by
+        key or batch. Reads row/col straight off the item the itemChanged signal actually handed
+        us - NOT off the current table selection, which (since the table moved to whole-row
+        selection) no longer reliably identifies which single cell/checkbox was just toggled.
+        Covers plain text cells AND checkbox cells (a binary factor column - detected via
+        the item's own checkable flag, not a hardcoded column check) - a multilevel factor
+        column's dropdown is a cell WIDGET instead, which doesn't fire itemChanged at all; see
+        _onFactorMultilevelChanged() for that path. Auto-saves the database CSV to disk right
+        after, if Auto-save database is checked."""
         if self.table_lock:
             return
         self.table_lock = True
         try:
             tbl = self.ui.tblSpecimens
-            sel = tbl.selectedIndexes()
-            if len(sel) == 0:
+            if changed_item is None:
                 return
-            row, col = sel[0].row(), sel[0].column()
+            row, col = changed_item.row(), changed_item.column()
+            if row < 0 or col < 0:
+                return
             cfg = self.logic.cfg
-            columns = cfg.table_columns
-            done_col_display_idx = columns.index(cfg.done_column) if cfg.done_column in columns else tbl.columnCount - 1
-
-            current_done = tbl.item(row, done_col_display_idx).text()
-            for j in range(tbl.columnCount):
-                tbl.item(row, j).setBackground(qt.QColor(0, 127, 0) if str(current_done) == "1" else qt.QColor("transparent"))
+            columns = self._displayColumns()
 
             key = self._displayed_keys[row]
             specimen = self.logic.specimens.get(key)
@@ -1726,9 +2259,116 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
                 logger.warning(f"[GenericSpecimenManager] column '{col_name}' not present in database.csv, not writing back")
                 return
             real_col = self.logic.dbColumnNames.index(col_name)
-            val = tbl.item(row, col).text()
+            edited_item = tbl.item(row, col)
+            if edited_item is not None and bool(edited_item.flags() & qt.Qt.ItemIsUserCheckable):
+                val = "1" if edited_item.checkState() == qt.Qt.Checked else "0"
+            else:
+                val = edited_item.text() if edited_item is not None else ""
             self.logic.dbTable.SetCellText(specimen.row_index, real_col, val)
             specimen.db_info[col_name] = val
+            self._autoSaveDatabaseIfEnabled()
+            self._refreshSpecimenAnnotation()
+        except Exception as e:
+            slicer.util.errorDisplay("Failed to update table: " + str(e))
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.table_lock = False
+
+    def _applyStatusRowStyle(self, row, status):
+        """Color one table row for `status` (SPECIMEN_STATUS_COLORS): every item cell gets the background (with black text, so it stays readable in a dark theme), and the status dropdown cell widget gets the same via stylesheet."""
+        r, g, b = SPECIMEN_STATUS_COLORS[status]
+        tbl = self.ui.tblSpecimens
+        was_locked = self.table_lock
+        self.table_lock = True   # recoloring fires itemChanged per cell - not a user edit
+        try:
+            for j in range(tbl.columnCount):
+                item = tbl.item(row, j)
+                if item is not None:
+                    item.setBackground(qt.QColor(r, g, b))
+                    item.setForeground(qt.QColor("black"))
+        finally:
+            self.table_lock = was_locked
+        idx = self._statusColumnIndex()
+        combo = tbl.cellWidget(row, idx) if idx is not None else None
+        if combo is not None:
+            combo.setStyleSheet(f"QComboBox {{ background-color: rgb({r},{g},{b}); color: black; }}")
+
+    def _displayColumns(self):
+        """The specimen table's columns, by database.csv column name: cfg.table_columns without the status column, then the status column always LAST (whatever it's called in the CSV, e.g. 'done') - shown under the header 'Status' and not optional."""
+        cfg = self.logic.cfg
+        return [c for c in cfg.table_columns if c != cfg.status_column] + [cfg.status_column]
+
+    def _statusColumnIndex(self):
+        """Display index of the status column in the specimen table - always the last one."""
+        return len(self._displayColumns()) - 1
+
+    def _refreshStatusCell(self, specimen):
+        """Update the displayed status dropdown + row color of one specimen in place (no table rebuild, so the row selection survives). No-op if the specimen isn't currently displayed."""
+        if specimen.key not in self._displayed_keys:
+            return
+        row = self._displayed_keys.index(specimen.key)
+        idx = self._statusColumnIndex()
+        if idx is not None:
+            combo = self.ui.tblSpecimens.cellWidget(row, idx)
+            if combo is not None:
+                combo.blockSignals(True)
+                combo.currentIndex = int(specimen.status)
+                combo.blockSignals(False)
+        self._applyStatusRowStyle(row, specimen.status)
+
+    def _setSpecimenStatus(self, specimen, status, only_raise=False):
+        """Set a specimen's status (see Logic.set_specimen_status), refresh its table row, and auto-save the database if that's on."""
+        if not self.logic.set_specimen_status(specimen, status, only_raise=only_raise):
+            return
+        self._refreshStatusCell(specimen)
+        self._autoSaveDatabaseIfEnabled()
+        self._refreshSpecimenAnnotation()
+
+    def _restoreSelection(self, key):
+        """Re-select the row of the specimen with `key`, if it's still displayed."""
+        if key in self._displayed_keys:
+            self.ui.tblSpecimens.selectRow(self._displayed_keys.index(key))
+
+    def _selectRowOf(self, specimen):
+        """Select the table row of `specimen` (if displayed) - a cell widget like the status dropdown doesn't select its own row when used, so without this an edit leaves the selection wherever it was."""
+        if specimen.key in self._displayed_keys:
+            self.ui.tblSpecimens.selectRow(self._displayed_keys.index(specimen.key))
+
+    def _onStatusComboChanged(self, row, index):
+        """Write-back for a manual pick in the status dropdown (a cell WIDGET, so itemChanged never fires for it)."""
+        if self.table_lock or row >= len(self._displayed_keys):
+            return
+        specimen = self.logic.specimens.get(self._displayed_keys[row])
+        if specimen is not None:
+            self._selectRowOf(specimen)
+            self._setSpecimenStatus(specimen, SpecimenStatus(index))
+
+    def _onFactorMultilevelChanged(self, row, col_name, text):
+        """Write-back for a multilevel factor column's dropdown (a QComboBox cell WIDGET, wired
+        directly in show_specimen_table() since cell widgets never fire the table's itemChanged
+        signal) - writes the level's exact text to the CSV ("(unset)" -> empty string), the same
+        row_index-based path specimen_tbl_changed() uses for everything else."""
+        if self.table_lock:
+            return
+        self.table_lock = True
+        try:
+            if row >= len(self._displayed_keys):
+                return
+            key = self._displayed_keys[row]
+            specimen = self.logic.specimens.get(key)
+            if specimen is None or specimen.row_index is None:
+                return
+            if col_name not in self.logic.dbColumnNames:
+                logger.warning(f"[GenericSpecimenManager] column '{col_name}' not present in database.csv, not writing back")
+                return
+            self._selectRowOf(specimen)
+            val = "" if text == "(unset)" else text
+            real_col = self.logic.dbColumnNames.index(col_name)
+            self.logic.dbTable.SetCellText(specimen.row_index, real_col, val)
+            specimen.db_info[col_name] = val
+            self._autoSaveDatabaseIfEnabled()
+            self._refreshSpecimenAnnotation()
         except Exception as e:
             slicer.util.errorDisplay("Failed to update table: " + str(e))
             import traceback
@@ -1737,39 +2377,209 @@ class GenericSpecimenManagerWidgetBase(ScriptedLoadableModuleWidget, VTKObservat
             self.table_lock = False
 
     def onBtnLoadSelected(self):
-        """Load the currently-selected specimen and update the active-specimen label/button state."""
+        """Load the currently-selected specimen, start observing it for the status dot, and update the active-specimen label/button state."""
         try:
             if not self.tbl_selected_key:
                 return
             self.logic.load_specimen(self.tbl_selected_key)
-            self.ui.btnLoadSelected.enabled = not self.logic.hasActiveSpecimen
-            if self.logic.hasActiveSpecimen:
-                self.ui.lblActiveSpecimen.text = self.logic.active_specimen.label
+            specimen = self.logic.active_specimen
+            if specimen is not None and specimen.loaded_own_data:
+                self._setSpecimenStatus(specimen, SpecimenStatus.IN_PROGRESS, only_raise=True)
+            self._attach_active_specimen_observers()
+            self._updatePostInitButtonStates()
+            self._refresh_specimen_status_labels()
+            self._refreshSpecimenAnnotation()
         except Exception as e:
             slicer.util.errorDisplay("Failed to load specimen: " + str(e))
             import traceback
             traceback.print_exc()
 
     def onBtnSaveActiveSpecimen(self):
-        """Save the active specimen's writeable nodes."""
+        """Save button: save the active specimen (with the 'Specimen saved' popup)."""
+        self._saveActiveSpecimen(inform_user=True)
+
+    def _onSaveShortcut(self):
+        """Ctrl+S while a specimen is loaded: same save as the button, without the popup (a status-bar note instead) - it can be pressed often."""
+        if self.logic is not None and self.logic.hasActiveSpecimen:
+            self._saveActiveSpecimen(inform_user=False)
+            slicer.util.showStatusMessage(f"Saved {self.logic.active_specimen.label}", 3000)
+
+    def _syncSaveShortcut(self):
+        """Ctrl+S belongs to this module ONLY while a specimen is loaded. Then Slicer's own Ctrl+S action (File > Save scene) has its shortcut cleared - two owners of one key sequence make Qt refuse to pick either ("Ambiguous shortcut overload") - and given back the moment no specimen is loaded, so Save scene works as usual otherwise."""
+        shortcut = getattr(self, "_saveShortcut", None)
+        if shortcut is None:
+            return
+        take = bool(self.logic is not None and self.logic.hasActiveSpecimen)
+        shortcut.enabled = take
+        if take and not self._displacedSaveActions:
+            for action in slicer.util.mainWindow().findChildren(qt.QAction):
+                if action.shortcut.toString() == "Ctrl+S":
+                    self._displacedSaveActions.append((action, action.shortcut))
+                    action.setShortcut(qt.QKeySequence())
+        elif not take:
+            self._restoreSlicerSaveShortcut()
+
+    def _restoreSlicerSaveShortcut(self):
+        """Give Slicer's own Ctrl+S action(s) their shortcut back."""
+        for action, sequence in self._displacedSaveActions:
+            action.setShortcut(sequence)
+        self._displacedSaveActions = []
+
+    def _saveActiveSpecimen(self, inform_user):
+        """Save the active specimen's writeable nodes, promote its status to in progress, and refresh the status dot back to clean."""
         try:
-            self.logic.save_active_specimen()
+            self.logic.save_active_specimen(inform_user=inform_user)
+            if self.logic.active_specimen is not None:
+                self._setSpecimenStatus(self.logic.active_specimen, SpecimenStatus.IN_PROGRESS, only_raise=True)
+            self._refresh_specimen_status_labels()
         except Exception as e:
             slicer.util.errorDisplay("Failed to save specimen: " + str(e))
             import traceback
             traceback.print_exc()
 
     def onBtnCloseActiveSpecimen(self):
-        """Close the active specimen (with confirmation) and reset the active-specimen label/button state."""
+        """Close the active specimen: asks Yes / Yes, mark to-review / Yes, mark finished / No instead of a plain
+        Yes/No confirm, so a specimen's status can be set without a separate trip to the table
+        dropdown first. This NEVER saves the specimen's own segmentation/markups - use Save
+        progress for that before closing if you want to keep unsaved work. The status update goes
+        through the same path as a manual dropdown pick - auto-saved to disk right away if
+        Auto-save database is checked (see _autoSaveDatabaseIfEnabled())."""
+        if not self.logic.hasActiveSpecimen:
+            self.logic.info("There is no active specimen to close.")
+            return
+        box = qt.QMessageBox(slicer.util.mainWindow())
+        box.setIcon(qt.QMessageBox.Question)
+        box.setWindowTitle("Close active specimen")
+        box.setText(f"Close {self.logic.active_specimen.label}?")
+        # Buttons are told apart by their text, not by object identity - PythonQt doesn't
+        # guarantee clickedButton() hands back the very same wrapper object addButton() returned.
+        choices = {"Yes": None, "Yes, mark to review": SpecimenStatus.TO_REVIEW, "Yes, mark finished": SpecimenStatus.FINISHED}
+        yesBtn = None
+        for text, status in choices.items():
+            btn = box.addButton(text, qt.QMessageBox.YesRole)
+            if status is not None:
+                r, g, b = SPECIMEN_STATUS_COLORS[status]   # same colors as the table rows
+                btn.setStyleSheet(f"QPushButton {{ background-color: rgb({r},{g},{b}); color: black; }}")
+            if yesBtn is None:
+                yesBtn = btn
+        box.addButton("No", qt.QMessageBox.NoRole)
+        box.setDefaultButton(yesBtn)
+        box.exec_()
+        clicked = box.clickedButton()
+        text = str(clicked.text) if clicked is not None else ""
+        if text not in choices:
+            return
+        self._restoreSelectionAfter(self._closeActiveSpecimen, choices[text])
+
+    def _restoreSelectionAfter(self, action, *args):
+        """Run `action(*args)` with the specimen table disabled, then re-select the row that was selected before. Closing/resetting a specimen makes the table grab focus, and a table with no current cell answers that by selecting its first row - a disabled table can't take focus."""
+        tbl = self.ui.tblSpecimens
+        selected_key = self.tbl_selected_key
+        tbl.enabled = False
+
+        def finish():
+            if selected_key is not None:
+                self._restoreSelection(selected_key)
+            tbl.enabled = True
+
         try:
-            self.logic.close_active_specimen()
-            self.ui.btnLoadSelected.enabled = not self.logic.hasActiveSpecimen
-            if not self.logic.hasActiveSpecimen:
-                self.ui.lblActiveSpecimen.text = ""
+            action(*args)
+        finally:
+            qt.QTimer.singleShot(0, finish)
+
+    def _closeActiveSpecimen(self, new_status):
+        """Close the active specimen, first setting `new_status` (a SpecimenStatus, or None to leave the status alone)."""
+        try:
+            specimen = self.logic.active_specimen
+            if new_status is not None:
+                self.logic.set_specimen_status(specimen, new_status)
+                self._refreshStatusCell(specimen)
+                self._autoSaveDatabaseIfEnabled()
+            self.logic.close_active_specimen(no_question=True)
+            self._detach_active_specimen_observers()
+            self._updatePostInitButtonStates()
+            self._refresh_specimen_status_labels()
+            self._refreshSpecimenAnnotation()
         except Exception as e:
             slicer.util.errorDisplay("Failed to close specimen: " + str(e))
             import traceback
             traceback.print_exc()
+
+    def onBtnResetSelectedSpecimen(self):
+        """Reset the specimen selected in the table (it doesn't have to be loaded): after a clearly worded confirmation - the specimen ID, the exact files, and the word RESET typed in - DELETES its saved segmentation and markups files from disk and sets its status back to 'untouched'. If it happens to be the active specimen it is closed too (unsaved work is discarded); load it again to start from the config's starting state. Source images are never touched. Cannot be undone."""
+        key = self.tbl_selected_key
+        specimen = self.logic.specimens.get(key) if key else None
+        if specimen is None:
+            self.logic.info("Select a specimen in the table first.")
+            return
+        cfg = self.logic.cfg
+        paths = []
+        if cfg.segmentation.enabled:
+            paths.append(specimen.segmentation_out_path())
+        if cfg.markups.enabled:
+            paths.append(specimen.markups_out_path())
+        existing = [p for p in paths if os.path.exists(p)]
+
+        dlg = qt.QDialog(slicer.util.mainWindow())
+        dlg.setWindowTitle("Reset specimen")
+        layout = qt.QVBoxLayout(dlg)
+        files = "".join(f"<li>{p}</li>" for p in existing) or "<li>(no saved files found)</li>"
+        msg = qt.QLabel(
+            f"<h3 style='color:#b00020'>Reset {specimen.label}?</h3>"
+            f"<p>These saved files will be <b>permanently deleted</b> from disk:</p><ul>{files}</ul>"
+            "<p>Its status will be set back to <b>untouched</b>."
+            + (" It is currently loaded: it will be closed and any unsaved work discarded." if self.logic.active_specimen is specimen else "")
+            + "<br>This cannot be undone.</p>")
+        msg.setWordWrap(True)
+        layout.addWidget(msg)
+        layout.addWidget(qt.QLabel("Type <b>RESET</b> to confirm:"))
+        confirmEdit = qt.QLineEdit()
+        layout.addWidget(confirmEdit)
+        btnRow = qt.QHBoxLayout()
+        btnRow.addStretch(1)
+        resetBtn = qt.QPushButton("Delete files and reset")
+        resetBtn.setStyleSheet("QPushButton { background-color: #f4c7c3; color: black; }")
+        resetBtn.enabled = False
+        resetBtn.connect('clicked(bool)', lambda checked=False: dlg.accept())
+        cancelBtn = qt.QPushButton("Cancel")
+        cancelBtn.setDefault(True)
+        cancelBtn.connect('clicked(bool)', lambda checked=False: dlg.reject())
+        confirmEdit.textChanged.connect(lambda text: setattr(resetBtn, "enabled", text.strip() == "RESET"))
+        btnRow.addWidget(resetBtn)
+        btnRow.addWidget(cancelBtn)
+        layout.addLayout(btnRow)
+        if dlg.exec_() != qt.QDialog.Accepted:
+            return
+        self._restoreSelectionAfter(self._resetSpecimen, specimen, existing)
+
+    def _resetSpecimen(self, specimen, existing):
+        """Delete the specimen's saved files (`existing`), close it if it's the active one, and set its status back to untouched."""
+        try:
+            for path in existing:
+                os.remove(path)
+                logger.info(f"[GenericSpecimenManager] reset {specimen.label}: deleted {path}")
+            if self.logic.active_specimen is specimen:
+                self.logic.close_active_specimen(no_question=True)
+                self._detach_active_specimen_observers()
+            self._setSpecimenStatus(specimen, SpecimenStatus.UNTOUCHED)
+            self._updatePostInitButtonStates()
+            self._refresh_specimen_status_labels()
+            self._refreshSpecimenAnnotation()
+        except Exception as e:
+            slicer.util.errorDisplay("Failed to reset specimen: " + str(e))
+            import traceback
+            traceback.print_exc()
+
+    def _isAutoSaveDBEnabled(self):
+        """True iff a study is initialized and its config has auto_save_database on."""
+        return bool(self._studyInitialized and self.logic.cfg is not None and self.logic.cfg.auto_save_database)
+
+    def _autoSaveDatabaseIfEnabled(self):
+        """If the config's auto_save_database is on, write the database CSV to disk right away - no
+        confirmation popup, since this runs silently after every edit (a manual table cell, the
+        status dropdown, or a status set on close), not just once on a deliberate click."""
+        if self._isAutoSaveDBEnabled():
+            self.logic.save_db(inform_user=False)
 
     def onBtnSaveDB(self):
         """Save the live database table back to its CSV file."""

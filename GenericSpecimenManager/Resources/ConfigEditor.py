@@ -12,7 +12,7 @@ JSON editing. Covers nearly the whole schema:
   Segmentation:   enabled, reference_image, path_pattern, output_filename,
                    segments table (name, source, csv_column, path_pattern,
                    color via per-selected-row popup)
-  Landmarks, Volume rendering, global Window/level, Batch export,
+  Markups, Volume rendering, global Window/level, Batch export,
   Segment editor: structured fields
   Defaults / Presets: raw JSON (open-ended, rarely hand-tuned per field)
 
@@ -26,6 +26,7 @@ import csv
 import json
 
 from Resources.LoggingSetup import logger
+from Resources.HelpDialog import show_cheatsheet_dialog
 from Resources.Definitions import (
     ROLE_CHOICES, TYPE_CHOICES, SOURCE_CHOICES, OVERWRITE_CHOICES, BRUSH_SHAPE_CHOICES,
     COLOR_TABLE_CHOICES, VR_PRESET_CHOICES, CROSSHAIR_MODE_CHOICES, CROSSHAIR_BEHAVIOR_CHOICES,
@@ -68,6 +69,15 @@ def _f(text):
         return float(text)
     except ValueError:
         return None
+
+
+CONFIG_EDITOR_HELP_SECTIONS = [
+    ("Workflow", "workflow"), ("General", "general"), ("Batch export", "batch-export"),
+    ("Images", "images"), ("Segmentation", "segmentation"), ("Markups", "markups"),
+    ("Workspace", "workspace"), ("Segment editor", "segment-editor"),
+    ("Volume rendering", "volume-rendering"), ("Defaults / Presets", "defaults-presets"),
+    ("Manual edit config", "manual-edit-config"), ("Key reference", "key-reference"),
+]
 
 
 class _ImageAdvancedPopup(qt.QDialog):
@@ -208,7 +218,7 @@ class ConfigEditorDialog(qt.QDialog):
 
         self._build_ui()
 
-        if initial_path and os.path.exists(initial_path):
+        if initial_path and os.path.isfile(initial_path):
             self._load_from_file(initial_path, ask_confirm=False)
         self._dirty = False
         self._updateTitle()
@@ -242,7 +252,7 @@ class ConfigEditorDialog(qt.QDialog):
         tabs.addTab(self._build_batch_export_tab(), "Batch export")
         tabs.addTab(self._build_images_tab(), "Images")
         tabs.addTab(self._build_segmentation_tab(), "Segmentation")
-        tabs.addTab(self._build_landmarks_tab(), "Landmarks")
+        tabs.addTab(self._build_markups_tab(), "Markups")
         tabs.addTab(self._build_workspace_tab(), "Workspace")
         tabs.addTab(self._build_segment_editor_tab(), "Segment editor")
         tabs.addTab(self._build_vr_tab(), "Volume rendering")
@@ -347,8 +357,14 @@ class ConfigEditorDialog(qt.QDialog):
     def _build_general_tab(self):
         """Study/database/preseg paths, key/table/output-dir columns, and batch mode."""
         w = qt.QWidget()
-        form = qt.QFormLayout(w)
+        layout = qt.QVBoxLayout(w)
 
+        def new_group(title):
+            group = qt.QGroupBox(title)
+            layout.addWidget(group)
+            return qt.QFormLayout(group)
+
+        form = new_group("Study files")
         self.studyDirEdit, studyDirRow = self._file_row(directory=True)
         self.studyDirEdit.setPlaceholderText("default: preseg CSV's folder")
         self.studyDirEdit.setToolTip(
@@ -370,67 +386,157 @@ class ConfigEditorDialog(qt.QDialog):
             relative_to=lambda: self.studyDirEdit.text.strip() or os.path.dirname(self._preseg_abs_path or ""))
         self.dbEdit.setToolTip("Shown relative to Study dir above (or to the preseg CSV's folder if Study dir is empty) - hover for the full path.")
         form.addRow("Database CSV:", dbRow)
+        self.chkAutoSaveDb = qt.QCheckBox("Auto-save database")
+        self.chkAutoSaveDb.setToolTip("Writes database.csv to disk after every table edit; the main module then hides its Save database CSV button.")
+        form.addRow(self.chkAutoSaveDb)
 
         showColsBtn = qt.QPushButton("Show CSV columns (copyable)...")
         showColsBtn.setToolTip("Reads the header row of both CSVs above and lists all columns - copy names from here into the fields below/Images tab.")
         showColsBtn.connect('clicked(bool)', lambda checked=False: self._onShowCsvColumns())
         form.addRow(showColsBtn)
 
+        form = new_group("Specimens")
         self.keyColumnsEdit = qt.QLineEdit()
         self.keyColumnsEdit.setPlaceholderText("comma-separated, e.g. ID,measurement")
         self.keyColumnsEdit.setToolTip(
             "The composite specimen ID. MUST exist, with matching values, in BOTH CSVs above - "
             "use 'Show CSV columns...' to see which column names are common to both (likely candidates).")
         form.addRow("Key columns:", self.keyColumnsEdit)
-        self.doneColumnEdit = qt.QLineEdit("done")
-        self.doneColumnEdit.setToolTip("database.csv column (0/1) marking a specimen as finished - drives table row highlighting and batch export filtering.")
-        form.addRow("Done column:", self.doneColumnEdit)
+        self.statusColumnEdit = qt.QLineEdit("status")
+        self.statusColumnEdit.setToolTip(
+            "<html>database.csv column holding each specimen's status (created if missing):<br>"
+            "&bull; 0 untouched<br>&bull; 1 in progress<br>&bull; 2 to review<br>&bull; 3 finished<br>"
+            "The column can have any name (e.g. 'done'). Always shown as the table's last column, headed 'Status', as a dropdown; colors the row. Batch export only processes 'finished'.</html>")
+        form.addRow("Status column:", self.statusColumnEdit)
         self.tableColumnsEdit = qt.QLineEdit()
         self.tableColumnsEdit.setPlaceholderText("comma-separated database.csv columns shown in the table")
-        self.tableColumnsEdit.setToolTip("Which database.csv columns appear (and are editable) in the main module's specimen table. Any column works, not just done.")
+        self.tableColumnsEdit.setToolTip("Which database.csv columns appear (and are editable) in the main module's specimen table. Any column works, not just status.")
         form.addRow("Table columns:", self.tableColumnsEdit)
         self.outputDirPatternEdit = qt.QLineEdit()
         self.outputDirPatternEdit.setPlaceholderText("e.g. {ID}/{measurement}")
         self.outputDirPatternEdit.setToolTip(
-            "Builds each specimen's OWN output folder, where its segmentation/markups/exports get "
-            "written. Same {curly-brace} placeholder style as every other 'path pattern' field in this "
-            "editor (Segmentation/Landmarks tabs) - anything in {braces} is a column name whose VALUE "
-            "gets substituted in; everything else (slashes, dashes, ...) is literal text.\n\n"
-            "Worked example: {ID}/{measurement} with a row ID='D001', measurement='baseline' -> output "
-            "folder study_dir/D001/baseline/\n\n"
-            "A shorter pattern (just {ID}) would instead put every measurement of the same specimen "
-            "into one shared folder study_dir/D001/ - only do this if that's actually what you want, "
-            "since two rows with the same ID but different measurement would then overwrite each "
-            "other's files. Leave empty to default to your Key columns, in order (e.g. Key columns "
-            "ID,measurement -> {ID}/{measurement} automatically).")
+            "<html>Builds each specimen's OWN output folder for interactive work (segmentation/"
+            "markups/saved images), under study_dir.<br>"
+            "Placeholder:<br>"
+            "&bull; {column} - any key/database.csv/preseg.csv column value, e.g. {ID}/{measurement} "
+            "-> study_dir/D001/baseline/<br>"
+            "A shorter pattern (just {ID}) puts every measurement of the same specimen into one "
+            "shared folder - only do this if two rows with the same ID but different measurement "
+            "overwriting each other's files is actually what you want.<br>"
+            "Empty -> your Key columns, in order.<br>"
+            "See Help for more.</html>")
         form.addRow("Output dir pattern:", self.outputDirPatternEdit)
 
-        sep = qt.QFrame()
-        sep.setFrameShape(qt.QFrame.HLine)
-        form.addRow(sep)
-
-        self.chkGroupByKey = qt.QCheckBox("Group subjects by key")
+        form = new_group("Filtering")
+        self.chkGroupByKey = qt.QCheckBox("Group specimens by key")
         self.chkGroupByKey.setToolTip(
             "Shows a group-select combo in the main module after Initialize Study, to browse/filter "
             "the specimen table by the key column below. This is purely a main-module VIEWING "
             "convenience - it does NOT affect the Batch Export tab, which only needs the Group-by "
-            "key set (its Export dir pattern/Report pattern/Landmark summary pattern fields can "
+            "key set (its Segment export pattern/Report pattern/Markup summary pattern fields can "
             "reference it directly).")
-        form.addRow(self.chkGroupByKey)
         self.groupByKeyColumnEdit = qt.QLineEdit()
         self.groupByKeyColumnEdit.setPlaceholderText("database.csv column to group/filter by, e.g. batch")
-        form.addRow("Group by key:", self.groupByKeyColumnEdit)
+        groupRow = qt.QHBoxLayout()
+        groupRow.addWidget(self.chkGroupByKey, 1)          # 1 : 3 - checkbox : key column
+        groupRow.addWidget(self.groupByKeyColumnEdit, 3)
+        form.addRow(groupRow)
+        self.chkStatusFilter = qt.QCheckBox("Filter by status")
+        self.chkStatusFilter.checked = True
+        self.chkStatusFilter.setToolTip(
+            "Shows a status checklist above the main module's specimen table, to show only the "
+            "specimens in the ticked statuses. A main-module VIEWING convenience only - Batch export "
+            "ignores it (it always processes 'finished' specimens). On by default.")
+        form.addRow(self.chkStatusFilter)
 
+        form = new_group("Factor columns")
+
+        self.factorColumnsTable = qt.QTableWidget(0, 3)
+        factor_headers = ["Column", "Type", "Levels (multilevel only)"]
+        factor_tips = [
+            "database.csv column name to treat as a factor, instead of free text.",
+            "binary: renders as a checkbox (0/1) in the main module's specimen table. multilevel: renders as a dropdown of the Levels column.",
+            "Comma-separated level values, e.g. control,low,high - written to the CSV as the exact text (never a numeric index), so the file stays readable by anything else too.",
+        ]
+        self.factorColumnsTable.setHorizontalHeaderLabels(factor_headers)
+        for col, tip in enumerate(factor_tips):
+            hitem = self.factorColumnsTable.horizontalHeaderItem(col)
+            if hitem:
+                hitem.setToolTip(tip)
+        self.factorColumnsTable.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
+        self.factorColumnsTable.horizontalHeader().setSectionResizeMode(2, qt.QHeaderView.Stretch)
+        form.addRow(self.factorColumnsTable)
+
+        factorBtnRow = qt.QHBoxLayout()
+        addFactorBtn = qt.QPushButton("Add factor column")
+        addFactorBtn.connect('clicked(bool)', lambda checked=False: self._onAddFactorColumn())
+        removeFactorBtn = qt.QPushButton("Remove selected")
+        removeFactorBtn.connect('clicked(bool)', lambda checked=False: self._onRemoveFactorColumn())
+        factorBtnRow.addWidget(addFactorBtn)
+        factorBtnRow.addWidget(removeFactorBtn)
+        factorBtnRow.addStretch(1)
+        form.addRow(factorBtnRow)
+
+        layout.addStretch(1)
         return w
 
-    def _build_batch_export_tab(self):
-        """Batch Export - runs once, against every specimen marked 'done', in one pass, without opening the interactive viewer for each one. Split into its own tab since it had grown too large to sit comfortably inside General."""
-        w = qt.QWidget()
-        beForm = qt.QFormLayout(w)
+    def _add_factor_column_row(self, d):
+        """Append one row to the Factor columns table (column name/type/comma-separated levels)."""
+        row = self.factorColumnsTable.rowCount
+        self.factorColumnsTable.insertRow(row)
+        self.factorColumnsTable.setItem(row, 0, qt.QTableWidgetItem(d.get("column", "")))
+        typeCombo = qt.QComboBox()
+        typeCombo.addItems(["binary", "multilevel"])
+        typeCombo.currentText = d.get("type", "binary") or "binary"
+        typeCombo.currentIndexChanged.connect(self._mark_dirty)
+        self.factorColumnsTable.setCellWidget(row, 1, typeCombo)
+        self.factorColumnsTable.setItem(row, 2, qt.QTableWidgetItem(",".join(d.get("levels") or [])))
+        self._mark_dirty()
 
+    def _onAddFactorColumn(self):
+        """Add one blank factor column row."""
+        self._add_factor_column_row({})
+
+    def _onRemoveFactorColumn(self):
+        """Remove the selected factor column row(s)."""
+        rows = sorted(set(i.row() for i in self.factorColumnsTable.selectedIndexes()), reverse=True)
+        for r in rows:
+            self.factorColumnsTable.removeRow(r)
+        self._mark_dirty()
+
+    def _read_factor_column_rows(self):
+        """Read the Factor columns table into a list of factor_columns[] entries, skipping rows with no column name. multilevel rows with no levels typed in still get written (an empty dropdown just means only the '(unset)' entry shows up in the main module until levels are added)."""
+        entries = []
+        for row in range(self.factorColumnsTable.rowCount):
+            item = self.factorColumnsTable.item(row, 0)
+            column = (item.text().strip() if item else "")
+            if not column:
+                continue
+            typeCombo = self.factorColumnsTable.cellWidget(row, 1)
+            ftype = (typeCombo.currentText or "binary") if typeCombo else "binary"
+            entry = {"column": column, "type": ftype}
+            if ftype == "multilevel":
+                levels_item = self.factorColumnsTable.item(row, 2)
+                levels = _csv_list(levels_item.text() if levels_item else "")
+                if levels:
+                    entry["levels"] = levels
+            entries.append(entry)
+        return entries
+
+    def _build_batch_export_tab(self):
+        """Batch Export - runs once, against every specimen marked 'finished', in one pass, without opening the interactive viewer for each one. Split into its own tab since it had grown too large to sit comfortably inside General."""
+        w = qt.QWidget()
+        layout = qt.QVBoxLayout(w)
+
+        def new_group(title):
+            group = qt.QGroupBox(title)
+            layout.addWidget(group)
+            return qt.QFormLayout(group)
+
+        beForm = new_group("Batch export")
         self.chkBeEnabled = qt.QCheckBox("Enable batch export")
         self.chkBeEnabled.setToolTip(
-            "Runs once, against every specimen marked 'done' in the database, without opening the "
+            "Runs once, against every specimen marked 'finished' in the database, without opening the "
             "interactive viewer for each one. Pick any combination of what to produce below - each "
             "is independent, and all of them run in the same single pass per specimen.")
         self.chkBeEnabled.connect('toggled(bool)', self._onBeEnabledToggled)
@@ -440,47 +546,42 @@ class ConfigEditorDialog(qt.QDialog):
 
         self.beOutputDirEdit, beOutputDirRow = self._file_row(directory=True)
         self.beOutputDirEdit.setToolTip(
-            "The base folder for this whole batch run - EVERYTHING below (segment files, markup "
-            "files, and the reports) is ultimately anchored to this. Empty -> study_dir. Relative -> "
-            "resolved under study_dir. Absolute -> used exactly as given.")
-        beForm.addRow("Batch export output dir:", beOutputDirRow)
+            "The root every pattern below is anchored to - segment/markup files, and (unless "
+            "absolute) the Segment export/Report/Markup summary patterns too. Empty -> study_dir. "
+            "Relative -> resolved under study_dir. Absolute -> used exactly as given.")
+        beForm.addRow("Batch export root dir:", beOutputDirRow)
         self._beChildWidgets.append(beOutputDirRow)
 
-        producesSep = qt.QFrame()
-        producesSep.setFrameShape(qt.QFrame.HLine)
-        beForm.addRow(producesSep)
-        beForm.addRow(qt.QLabel("<b>Batch operations</b> - check any combination:"))
-        producesRow = qt.QHBoxLayout()
+        beForm = new_group("Batch operations")
+        opsGrid = qt.QGridLayout()
         self.chkBeExportSegments = qt.QCheckBox("Export segments")
         self.chkBeExportSegments.setToolTip("Writes each segment to its own labelmap file, one per segment per specimen.")
-        producesRow.addWidget(self.chkBeExportSegments)
-        self.chkBeExportMarkups = qt.QCheckBox("Export markups")
-        self.chkBeExportMarkups.setToolTip(
-            "Writes each specimen's markups/landmarks .mrk.json file, PLUS a per-specimen landmarks "
-            "CSV (label, x, y, z - world/RAS position, read straight from the live markups node) "
-            "automatically alongside it - no separate switch needed for that part.")
-        producesRow.addWidget(self.chkBeExportMarkups)
         self.chkBeComputeStats = qt.QCheckBox("Custom segment statistics")
         self.chkBeComputeStats.setToolTip(
             "Needs numpy installed. Computed straight from Slicer's own segment export (handles "
-            "overlapping segments correctly) - every 'done' specimen's rows go into a combined CSV. "
+            "overlapping segments correctly) - every 'finished' specimen's rows go into a combined CSV. "
             "Configured in the 'Segment statistics settings' group further down.")
-        producesRow.addWidget(self.chkBeComputeStats)
-        self.chkBeLandmarksReport = qt.QCheckBox("Landmark summary")
-        self.chkBeLandmarksReport.setToolTip(
+        self.chkBeExportMarkups = qt.QCheckBox("Export markups")
+        self.chkBeExportMarkups.setToolTip(
+            "Writes each specimen's markups .mrk.json file, PLUS a per-specimen markups CSV (label, "
+            "x, y, z - world/RAS position, read straight from the live markups node) automatically "
+            "alongside it - no separate switch needed for that part.")
+        self.chkBeMarkupsReport = qt.QCheckBox("Markup summary")
+        self.chkBeMarkupsReport.setToolTip(
             "Needs Export markups above also checked. In addition to the automatic per-specimen "
-            "landmarks CSV, combines every specimen's landmarks into one or more CSVs (one row per "
-            "landmark, key columns prepended) - configured in 'Landmark summary settings' further "
+            "markups CSV, combines every specimen's markup points into one or more CSVs (one row "
+            "per point, key columns prepended) - configured in 'Markup summary settings' further "
             "down.")
-        producesRow.addWidget(self.chkBeLandmarksReport)
-        producesRow.addStretch(1)
-        beForm.addRow(producesRow)
-        self._beChildWidgets += [self.chkBeExportSegments, self.chkBeExportMarkups, self.chkBeComputeStats, self.chkBeLandmarksReport]
+        opsGrid.addWidget(self.chkBeExportSegments, 0, 0)
+        opsGrid.addWidget(self.chkBeComputeStats, 0, 1)
+        opsGrid.addWidget(self.chkBeExportMarkups, 1, 0)
+        opsGrid.addWidget(self.chkBeMarkupsReport, 1, 1)
+        opsGrid.setColumnStretch(0, 1)
+        opsGrid.setColumnStretch(1, 1)
+        beForm.addRow(opsGrid)
+        self._beChildWidgets += [self.chkBeExportSegments, self.chkBeComputeStats, self.chkBeExportMarkups, self.chkBeMarkupsReport]
 
-        settingsSep = qt.QFrame()
-        settingsSep.setFrameShape(qt.QFrame.HLine)
-        beForm.addRow(settingsSep)
-        beForm.addRow(qt.QLabel("<b>Export settings</b> - govern segment + markup export:"))
+        beForm = new_group("Segment export settings")
 
         refRow = qt.QHBoxLayout()
         self.beReferenceImageEdit = qt.QComboBox()
@@ -506,45 +607,21 @@ class ConfigEditorDialog(qt.QDialog):
         segFilterAllBtn.connect('clicked(bool)', lambda checked=False: self._onInsertAllSegmentsFilter())
         segFilterRow.addWidget(segFilterAllBtn)
         beForm.addRow("Segments filter:", segFilterRow)
-        self.beSegmentsFilterEdit.setToolTip("Also affects which segments get statistics rows below, not just file export.")
+        self.beSegmentsFilterEdit.setToolTip("Which segments get exported to their own labelmap file. Independent of the Segment statistics settings' own filter below.")
         self._beChildWidgets += [self.beSegmentsFilterEdit, segFilterAllBtn]
 
         self.beOutputDirPatternEdit = qt.QLineEdit()
         self.beOutputDirPatternEdit.setPlaceholderText("e.g. {ID}/{measurement}")
         self.beOutputDirPatternEdit.setToolTip(
-            "Curly-brace pattern joined onto the output dir above, resolved separately for each "
-            "specimen - the SAME mechanism as the General tab's own Output dir pattern (any "
-            "key/database.csv/preseg.csv column in {braces}). Leave empty to default the same way "
-            "that one does too (your key columns, joined). A database column that varies per "
-            "specimen - e.g. a \"batch\" column - naturally routes different specimens into "
-            "different subfolders just by being referenced here, e.g. {batch}/{ID} - no separate "
-            "on/off switch needed for that.")
-        beForm.addRow("Export dir pattern:", self.beOutputDirPatternEdit)
+            "<html>Per-specimen subfolder, joined onto the Batch export root dir above.<br>"
+            "Placeholder:<br>"
+            "&bull; {column} - any key/database.csv/preseg.csv column value, e.g. {batch}/{ID}<br>"
+            "Empty -> your key columns, joined.<br>"
+            "See Help for more.</html>")
+        beForm.addRow("Segment export pattern:", self.beOutputDirPatternEdit)
         self._beChildWidgets.append(self.beOutputDirPatternEdit)
 
-        lmSep = qt.QFrame()
-        lmSep.setFrameShape(qt.QFrame.HLine)
-        beForm.addRow(lmSep)
-        beForm.addRow(qt.QLabel(
-            "<b>Landmark summary settings</b> - only used when \"Landmark summary\" above is "
-            "checked; needs Export markups checked too:"))
-        self.landmarksOutputPathEdit = qt.QLineEdit()
-        self.landmarksOutputPathEdit.setPlaceholderText("landmarks_report.csv")
-        self.landmarksOutputPathEdit.setToolTip(
-            "Curly-brace pattern (same {column} mechanism as the export dir pattern above), "
-            "resolved separately for each specimen. If relative, anchored to Batch export output "
-            "dir above - or study_dir directly if that's empty - never nested through the export "
-            "dir pattern. \"{date}\"/\"{time}\"/\"{datetime}\" also substituted if present. "
-            "Specimens that resolve to the SAME final path share one CSV; referencing a column "
-            "that varies (e.g. \"{batch}/landmarks.csv\") naturally splits those specimens into "
-            "separate files instead. Leave empty to default to landmarks_report.csv.")
-        beForm.addRow("Landmark summary pattern:", self.landmarksOutputPathEdit)
-        self._beChildWidgets.append(self.landmarksOutputPathEdit)
-
-        statsSep = qt.QFrame()
-        statsSep.setFrameShape(qt.QFrame.HLine)
-        beForm.addRow(statsSep)
-        beForm.addRow(qt.QLabel("<b>Segment statistics settings</b>:"))
+        beForm = new_group("Segment statistics settings")
 
         statsRefRow = qt.QHBoxLayout()
         self.statsReferenceImagesEdit = qt.QLineEdit()
@@ -561,6 +638,21 @@ class ConfigEditorDialog(qt.QDialog):
         statsRefRow.addWidget(statsRefAllBtn)
         beForm.addRow("Stats reference image(s):", statsRefRow)
         self._beChildWidgets += [self.statsReferenceImagesEdit, statsRefAllBtn]
+
+        statsSegFilterRow = qt.QHBoxLayout()
+        self.statsSegmentsFilterEdit = qt.QLineEdit()
+        self.statsSegmentsFilterEdit.setPlaceholderText("comma-separated segment names, empty = all")
+        statsSegFilterRow.addWidget(self.statsSegmentsFilterEdit)
+        statsSegFilterAllBtn = qt.QPushButton("Use all segments")
+        statsSegFilterAllBtn.setToolTip("Fills in every segment name currently in the Segmentation tab.")
+        statsSegFilterAllBtn.connect('clicked(bool)', lambda checked=False: self._onInsertAllStatsSegmentsFilter())
+        statsSegFilterRow.addWidget(statsSegFilterAllBtn)
+        beForm.addRow("Segments filter:", statsSegFilterRow)
+        self.statsSegmentsFilterEdit.setToolTip(
+            "Which segments get a statistics row. Independent of the Segment export settings' own "
+            "filter above - a segment can be included here without being exported to a file, or "
+            "vice versa.")
+        self._beChildWidgets += [self.statsSegmentsFilterEdit, statsSegFilterAllBtn]
 
         metricsRow = qt.QHBoxLayout()
         self.statsMetricsEdit = qt.QLineEdit()
@@ -580,19 +672,53 @@ class ConfigEditorDialog(qt.QDialog):
         self.statsOutputPathEdit = qt.QLineEdit()
         self.statsOutputPathEdit.setPlaceholderText("report.csv")
         self.statsOutputPathEdit.setToolTip(
-            "Curly-brace pattern, resolved separately for each specimen (same {column} mechanism as "
-            "the export dir pattern above). If relative, anchored to Batch export output dir above "
-            "(the SAME root segment/markup files use) - or to study_dir directly if that's empty - "
-            "but, unlike segment/markup files, NEVER nested through the export dir pattern; this is "
-            "its own separate path straight under that root. \"{date}\" (YYYY-MM-DD), \"{time}\" "
-            "(HH-MM-SS), and/or \"{datetime}\" (YYYY-MM-DD_HH-MM-SS) are also substituted if present. "
-            "Specimens that resolve to the SAME final path share one CSV; referencing a column that "
-            "varies (e.g. \"{batch}/report.csv\") naturally splits those specimens into separate files "
-            "instead - no separate on/off switch needed. Leave empty to default to report.csv (one "
-            "shared file for everyone).")
+            "<html>File path, anchored directly to Batch export root dir above (never nested "
+            "through the Segment export pattern).<br>"
+            "Placeholders:<br>"
+            "&bull; {column} - any key/database.csv/preseg.csv column value<br>"
+            "&bull; {date} - YYYY-MM-DD<br>"
+            "&bull; {time} - HH-MM-SS<br>"
+            "&bull; {datetime} - YYYY-MM-DD_HH-MM-SS<br>"
+            "&bull; {index} - only if present: 01-based counter before the extension, lowest free "
+            "number on disk, so an existing report is never overwritten (without it, an existing "
+            "file IS overwritten)<br>"
+            "Same final path -> one shared CSV; different paths -> separate files.<br>"
+            "Empty -> report.csv.<br>"
+            "See Help for more.</html>")
         beForm.addRow("Report pattern:", self.statsOutputPathEdit)
         self._beChildWidgets.append(self.statsOutputPathEdit)
 
+        beForm = new_group("Markup summary settings")
+        self.markupsCoordinateSystemCombo = qt.QComboBox()
+        self.markupsCoordinateSystemCombo.addItems(["RAS", "LPS"])
+        self.markupsCoordinateSystemCombo.setToolTip(
+            "Coordinate convention for the point x/y/z values written to BOTH the per-specimen "
+            "markups CSV (from Export markups) and the combined Markup summary CSV below - the "
+            ".mrk.json file itself is untouched either way. RAS (default) is Slicer's own world "
+            "coordinate, written as-is. LPS flips x and y (LPS = -x, -y, z relative to RAS) - use "
+            "this if the CSV feeds an ITK/DICOM-based pipeline that expects LPS.")
+        beForm.addRow("Markup CSV coordinate encoding:", self.markupsCoordinateSystemCombo)
+        self._beChildWidgets.append(self.markupsCoordinateSystemCombo)
+        self.markupsOutputPathEdit = qt.QLineEdit()
+        self.markupsOutputPathEdit.setPlaceholderText("markups_report.csv")
+        self.markupsOutputPathEdit.setToolTip(
+            "<html>File path, anchored directly to Batch export root dir above (never nested "
+            "through the Segment export pattern).<br>"
+            "Placeholders:<br>"
+            "&bull; {column} - any key/database.csv/preseg.csv column value<br>"
+            "&bull; {date} - YYYY-MM-DD<br>"
+            "&bull; {time} - HH-MM-SS<br>"
+            "&bull; {datetime} - YYYY-MM-DD_HH-MM-SS<br>"
+            "&bull; {index} - only if present: 01-based counter before the extension, lowest free "
+            "number on disk, so an existing summary is never overwritten (without it, an existing "
+            "file IS overwritten)<br>"
+            "Same final path -> one shared CSV; different paths -> separate files.<br>"
+            "Empty -> markups_report.csv.<br>"
+            "See Help for more.</html>")
+        beForm.addRow("Markup summary pattern:", self.markupsOutputPathEdit)
+        self._beChildWidgets.append(self.markupsOutputPathEdit)
+
+        layout.addStretch(1)
         self._onBeEnabledToggled(self.chkBeEnabled.checked)
 
         return w
@@ -1096,31 +1222,75 @@ class ConfigEditorDialog(qt.QDialog):
             self._apply_segment_color_display(row)
             self._mark_dirty()
 
-    # ---- Landmarks tab ----
+    # ---- Markups tab ----
 
-    def _build_landmarks_tab(self):
+    def _build_markups_tab(self):
         """Enabled/csv column/path pattern/template file/writable/color."""
         w = qt.QWidget()
         form = qt.QFormLayout(w)
-        self.chkLmEnabled = qt.QCheckBox("Enabled")
-        form.addRow(self.chkLmEnabled)
-        self.lmCsvColumnEdit = qt.QLineEdit()
-        self.lmCsvColumnEdit.setToolTip("preseg.csv column holding an existing markups file path for this specimen (optional - falls back to Path pattern).")
-        form.addRow("CSV column:", self.lmCsvColumnEdit)
-        self.lmPathPatternEdit = qt.QLineEdit()
-        self.lmPathPatternEdit.setPlaceholderText("default: {label}-markups.mrk.json")
-        self.lmPathPatternEdit.setToolTip("Fallback naming when CSV column is empty/unset. {label} = the specimen's key joined with '-', e.g. 'D001'.")
-        form.addRow("Path pattern:", self.lmPathPatternEdit)
-        self.lmTemplateEdit, lmTemplateRow = self._file_row(filter_="Markups (*.mrk.json *.json);;All files (*)")
-        self.lmTemplateEdit.setToolTip("If a specimen has no markups file yet, load THIS file as the starting point (renamed to that specimen) instead of an empty fiducial list.")
-        form.addRow("Template file (optional):", lmTemplateRow)
-        self.chkLmWritable = qt.QCheckBox("Writable")
-        self.chkLmWritable.checked = True
-        form.addRow(self.chkLmWritable)
-        self.lmColorEdit = qt.QLineEdit()
-        self.lmColorEdit.setPlaceholderText("r,g,b (0-1), e.g. 1,1,0")
-        form.addRow("Color:", self.lmColorEdit)
+        self.chkMarkupsEnabled = qt.QCheckBox("Enabled")
+        form.addRow(self.chkMarkupsEnabled)
+        self.markupsCsvColumnEdit = qt.QLineEdit()
+        self.markupsCsvColumnEdit.setToolTip("preseg.csv column holding an existing markups file path for this specimen (optional - falls back to Path pattern).")
+        form.addRow("CSV column:", self.markupsCsvColumnEdit)
+        self.markupsPathPatternEdit = qt.QLineEdit()
+        self.markupsPathPatternEdit.setPlaceholderText("default: {label}-markups.mrk.json")
+        self.markupsPathPatternEdit.setToolTip("Fallback naming when CSV column is empty/unset. {label} = the specimen's key joined with '-', e.g. 'D001'.")
+        form.addRow("Path pattern:", self.markupsPathPatternEdit)
+        self.markupsTemplateEdit, markupsTemplateRow = self._file_row(filter_="Markups (*.mrk.json *.json);;All files (*)")
+        self.markupsTemplateEdit.setToolTip("If a specimen has no markups file yet, load THIS file as the starting point (renamed to that specimen) instead of an empty fiducial list.")
+        form.addRow("Template file (optional):", markupsTemplateRow)
+        self.chkMarkupsWritable = qt.QCheckBox("Writable")
+        self.chkMarkupsWritable.checked = True
+        form.addRow(self.chkMarkupsWritable)
+        self.markupsColorEdit = qt.QLineEdit()
+        self.markupsColorEdit.setReadOnly(True)
+        self.markupsColorEdit.setPlaceholderText("(unset - Slicer's default)")
+        self.markupsColorEdit.setToolTip("Markup point color as r,g,b (0-1). Use 'Set color...' to pick.")
+        self.markupsColorEdit.textChanged.connect(lambda _text: self._apply_markups_color_display())
+        colorBtn = qt.QPushButton("Set color...")
+        colorBtn.connect('clicked(bool)', lambda checked=False: self._onPickMarkupsColor())
+        clearColorBtn = qt.QPushButton("Clear")
+        clearColorBtn.setToolTip("Unset the color - Slicer's default is used.")
+        clearColorBtn.connect('clicked(bool)', lambda checked=False: self._onClearMarkupsColor())
+        colorRow = qt.QHBoxLayout()
+        colorRow.addWidget(self.markupsColorEdit)
+        colorRow.addWidget(colorBtn)
+        colorRow.addWidget(clearColorBtn)
+        form.addRow("Color:", colorRow)
         return w
+
+    def _markups_color_rgb(self):
+        """The markups color field as [r, g, b] floats (0-1), or None if unset/unparseable."""
+        try:
+            rgb = [float(c) for c in self.markupsColorEdit.text.split(",")]
+        except ValueError:
+            return None
+        return rgb if len(rgb) == 3 else None
+
+    def _apply_markups_color_display(self):
+        """Paint the markups color field's background from its r,g,b text (cleared when unset)."""
+        rgb = self._markups_color_rgb()
+        if not rgb:
+            self.markupsColorEdit.setStyleSheet("")
+            return
+        r, g, b = (int(round(c * 255)) for c in rgb)
+        text_color = "black" if (0.299 * r + 0.587 * g + 0.114 * b) > 128 else "white"
+        self.markupsColorEdit.setStyleSheet(f"background-color: rgb({r},{g},{b}); color: {text_color};")
+
+    def _onPickMarkupsColor(self):
+        """Open a color picker, starting from the current markups color (or the default segment color), and apply the chosen one."""
+        rgb = self._markups_color_rgb() or list(DEFAULT_SEGMENT_COLOR)
+        current = qt.QColor(*(int(round(c * 255)) for c in rgb))
+        color = qt.QColorDialog.getColor(current, self, "Pick markups color")
+        if color.isValid():
+            self.markupsColorEdit.text = f"{color.red() / 255.0:.2f},{color.green() / 255.0:.2f},{color.blue() / 255.0:.2f}"
+            self._mark_dirty()
+
+    def _onClearMarkupsColor(self):
+        """Unset the markups color."""
+        self.markupsColorEdit.text = ""
+        self._mark_dirty()
 
     # ---- Volume rendering tab ----
 
@@ -1252,10 +1422,14 @@ class ConfigEditorDialog(qt.QDialog):
         wlForm.addRow(self.chkWlEnabled)
         self.wlMinEdit = qt.QLineEdit()
         self.wlMinEdit.setToolTip("Lower display value, e.g. -150 for a typical CT soft-tissue window.")
-        wlForm.addRow("Min:", self.wlMinEdit)
         self.wlMaxEdit = qt.QLineEdit()
         self.wlMaxEdit.setToolTip("Upper display value, e.g. 700 for a typical CT soft-tissue window.")
-        wlForm.addRow("Max:", self.wlMaxEdit)
+        wlRow = qt.QHBoxLayout()
+        wlRow.addWidget(qt.QLabel("Min:"))
+        wlRow.addWidget(self.wlMinEdit)
+        wlRow.addWidget(qt.QLabel("Max:"))
+        wlRow.addWidget(self.wlMaxEdit)
+        wlForm.addRow(wlRow)
         layout.addWidget(wlGroup)
 
         rotGroup = qt.QGroupBox("Slice rotation (in-plane, degrees)")
@@ -1266,14 +1440,16 @@ class ConfigEditorDialog(qt.QDialog):
             "identical to the Reformat module's rotation slider. Leave a view's field empty to leave it alone.")
         rotForm.addRow(self.chkSliceRotationEnabled)
         self.sliceRotRedEdit = qt.QLineEdit()
-        self.sliceRotRedEdit.setPlaceholderText("degrees, e.g. 180")
-        rotForm.addRow("Red:", self.sliceRotRedEdit)
+        self.sliceRotRedEdit.setPlaceholderText("e.g. 180")
         self.sliceRotYellowEdit = qt.QLineEdit()
-        self.sliceRotYellowEdit.setPlaceholderText("degrees, e.g. -90")
-        rotForm.addRow("Yellow:", self.sliceRotYellowEdit)
+        self.sliceRotYellowEdit.setPlaceholderText("e.g. -90")
         self.sliceRotGreenEdit = qt.QLineEdit()
-        self.sliceRotGreenEdit.setPlaceholderText("degrees, e.g. -90")
-        rotForm.addRow("Green:", self.sliceRotGreenEdit)
+        self.sliceRotGreenEdit.setPlaceholderText("e.g. -90")
+        rotRow = qt.QHBoxLayout()
+        for label, edit in (("Red:", self.sliceRotRedEdit), ("Yellow:", self.sliceRotYellowEdit), ("Green:", self.sliceRotGreenEdit)):
+            rotRow.addWidget(qt.QLabel(label))
+            rotRow.addWidget(edit)
+        rotForm.addRow(rotRow)
         layout.addWidget(rotGroup)
 
         chGroup = qt.QGroupBox("Crosshair")
@@ -1350,9 +1526,22 @@ class ConfigEditorDialog(qt.QDialog):
         self.radioRadiological = qt.QRadioButton("Radiological - patient's right on screen-LEFT (Slicer's own default)")
         self.radioNeurological = qt.QRadioButton("Neurological - patient's right on screen-RIGHT")
         self.radioRadiological.setChecked(True)
-        conventionLayout.addWidget(self.radioRadiological)
-        conventionLayout.addWidget(self.radioNeurological)
+        conventionRow = qt.QHBoxLayout()
+        conventionRow.addWidget(self.radioRadiological)
+        conventionRow.addWidget(self.radioNeurological)
+        conventionLayout.addLayout(conventionRow)
         layout.addWidget(conventionGroup)
+
+        annotationGroup = qt.QGroupBox("Specimen annotation (optional)")
+        annotationLayout = qt.QVBoxLayout(annotationGroup)
+        self.chkSpecimenAnnotation = qt.QCheckBox("Show the active specimen's database row in the views")
+        self.chkSpecimenAnnotation.setToolTip(
+            "<html>While a specimen is loaded, shows yellow text in the top-left of the Red/Yellow/Green "
+            "and 3D views:<br>&bull; the ID (the key columns joined with '-')<br>"
+            "&bull; a line<br>&bull; one 'column: value' line per remaining Table column (General tab)<br>"
+            "&bull; a line<br>&bull; the specimen's status<br>Updated live as the table is edited.</html>")
+        annotationLayout.addWidget(self.chkSpecimenAnnotation)
+        layout.addWidget(annotationGroup)
 
         return w
 
@@ -1361,26 +1550,41 @@ class ConfigEditorDialog(qt.QDialog):
     def _build_segment_editor_tab(self):
         """Overwrite mode/brush shape+size+unit/active effect/raw attributes escape hatch."""
         w = qt.QWidget()
-        form = qt.QFormLayout(w)
+        layout = qt.QVBoxLayout(w)
+
+        overwriteGroup = qt.QGroupBox("Overwrite mode")
+        overwriteForm = qt.QFormLayout(overwriteGroup)
         self.overwriteModeCombo = qt.QComboBox()
         self.overwriteModeCombo.addItems(OVERWRITE_CHOICES)
         self.overwriteModeCombo.setToolTip("'none' = the Segment Editor's 'Allow overlap' checkbox is ON. 'all_segments'/'visible_segments' restrict painting to not overwrite other segments.")
-        form.addRow("Overwrite mode:", self.overwriteModeCombo)
+        overwriteForm.addRow("Mode:", self.overwriteModeCombo)
+        layout.addWidget(overwriteGroup)
+
+        brushGroup = qt.QGroupBox("Brush")
+        brushForm = qt.QFormLayout(brushGroup)
         self.brushShapeCombo = qt.QComboBox()
         self.brushShapeCombo.addItems(BRUSH_SHAPE_CHOICES)
         self.brushShapeCombo.setToolTip("sphere = 3D brush (also paints in the 3D view). circle = Slicer's normal 2D slice brush.")
-        form.addRow("Brush shape:", self.brushShapeCombo)
+        brushForm.addRow("Shape:", self.brushShapeCombo)
         self.brushDiameterEdit = qt.QLineEdit()
         self.brushDiameterEdit.setToolTip("Fixed brush size - in mm if 'Use absolute size' below is checked, in % of the slice view otherwise.")
-        form.addRow("Brush diameter (mm or %):", self.brushDiameterEdit)
+        brushForm.addRow("Diameter (mm or %):", self.brushDiameterEdit)
         self.chkBrushAbsolute = qt.QCheckBox("Use absolute size (mm)")
         self.chkBrushAbsolute.setToolTip("Checked: fixed size in millimeters, regardless of zoom. Unchecked: size as a percentage of the slice view instead.")
         self.chkBrushAbsolute.checked = True
-        form.addRow(self.chkBrushAbsolute)
+        brushForm.addRow(self.chkBrushAbsolute)
+        layout.addWidget(brushGroup)
+
+        effectGroup = qt.QGroupBox("Active effect")
+        effectForm = qt.QFormLayout(effectGroup)
         self.activeEffectEdit = qt.QLineEdit()
         self.activeEffectEdit.setPlaceholderText("e.g. Paint")
         self.activeEffectEdit.setToolTip("Pre-select this effect whenever a live/default Segment Editor node picks up these settings (best-effort, not forced).")
-        form.addRow("Active effect on load:", self.activeEffectEdit)
+        effectForm.addRow("On load:", self.activeEffectEdit)
+        layout.addWidget(effectGroup)
+
+        attrGroup = qt.QGroupBox("Raw attributes (JSON)")
+        attrLayout = qt.QVBoxLayout(attrGroup)
         self.seAttributesEdit = qt.QPlainTextEdit()
         self.seAttributesEdit.setPlaceholderText('{"BrushSphere": "1"}')
         self.seAttributesEdit.setMaximumHeight(100)
@@ -1390,7 +1594,10 @@ class ConfigEditorDialog(qt.QDialog):
             "BrushDiameterIsRelative) are COMMON parameters with NO effect-name prefix - just the bare "
             "name, e.g. \"BrushSphere\": \"1\" (NOT \"Paint,BrushSphere\"). Only effect-SPECIFIC settings "
             "use an \"EffectName.ParamName\" form, e.g. \"Paint.ColorSmudge\".")
-        form.addRow("Raw attributes (JSON):", self.seAttributesEdit)
+        attrLayout.addWidget(self.seAttributesEdit)
+        layout.addWidget(attrGroup)
+
+        layout.addStretch(1)
         return w
 
     # ---- Defaults / Presets tab ----
@@ -1461,14 +1668,22 @@ class ConfigEditorDialog(qt.QDialog):
             w.enabled = checked
 
     def _onInsertAllSegmentsFilter(self):
-        """Fill Segments filter with every non-empty Name in the Segmentation tab's segments table."""
+        """Fill Segment export settings' Segments filter with every non-empty Name in the Segmentation tab's segments table."""
+        self.beSegmentsFilterEdit.text = ",".join(self._get_segment_names())
+
+    def _get_segment_names(self):
+        """Every non-empty Name in the Segmentation tab's segments table."""
         names = []
         for row in range(self.segTable.rowCount):
             item = self.segTable.item(row, 0)
             name = (item.text().strip() if item else "")
             if name:
                 names.append(name)
-        self.beSegmentsFilterEdit.text = ",".join(names)
+        return names
+
+    def _onInsertAllStatsSegmentsFilter(self):
+        """Fill Segment statistics settings' own Segments filter with every non-empty Name in the Segmentation tab's segments table - independent of Segment export settings' filter."""
+        self.statsSegmentsFilterEdit.text = ",".join(self._get_segment_names())
 
     def _get_image_names(self):
         """Every non-empty Name in the Images tab table (pattern-mode rows, which have no fixed literal name, are skipped)."""
@@ -1598,59 +1813,8 @@ class ConfigEditorDialog(qt.QDialog):
             return f"<p>Could not load {filename}: {e}</p>"
 
     def _onShowHelp(self):
-        """Open the HTML cheat-sheet (Resources/Html/help_cheatsheet.html) in a read-only, scrollable, copyable QTextBrowser popup, with a section-jump combo and a text search bar on top - the content has grown long enough that jumping straight to a section or searching beats scrolling through the whole thing."""
-        popup = qt.QDialog(self)
-        popup.setWindowTitle("Config Editor - Cheat Sheet")
-        popup.resize(700, 620)
-        layout = qt.QVBoxLayout(popup)
-
-        browser = qt.QTextBrowser()
-        browser.setOpenExternalLinks(False)
-        browser.setHtml(self._load_html_resource("help_cheatsheet.html"))
-
-        navRow = qt.QHBoxLayout()
-        navRow.addWidget(qt.QLabel("Jump to:"))
-        sectionCombo = qt.QComboBox()
-        # (label, anchor) pairs - anchor ids match the <a name="..."> tags in help_cheatsheet.html
-        sections = [
-            ("Workflow", "workflow"), ("General", "general"), ("Batch export", "batch-export"),
-            ("Images", "images"), ("Segmentation", "segmentation"), ("Landmarks", "landmarks"),
-            ("Workspace", "workspace"), ("Segment editor", "segment-editor"),
-            ("Volume rendering", "volume-rendering"), ("Defaults / Presets", "defaults-presets"),
-            ("Manual edit config", "manual-edit-config"),
-        ]
-        for label, _anchor in sections:
-            sectionCombo.addItem(label)
-        sectionCombo.connect(
-            'currentIndexChanged(int)',
-            lambda i: browser.scrollToAnchor(sections[i][1]) if 0 <= i < len(sections) else None)
-        navRow.addWidget(sectionCombo)
-        navRow.addStretch(1)
-        layout.addLayout(navRow)
-
-        findRow = qt.QHBoxLayout()
-        findRow.addWidget(qt.QLabel("Find:"))
-        findEdit = qt.QLineEdit()
-        findEdit.setPlaceholderText("search this page...")
-
-        def do_find(_checked=False):
-            text = findEdit.text.strip()
-            if text:
-                browser.find(text)
-
-        findEdit.connect('returnPressed()', do_find)
-        findRow.addWidget(findEdit)
-        findNextBtn = qt.QPushButton("Find next")
-        findNextBtn.setToolTip("Repeats the search, wrapping to the top once it reaches the end.")
-        findNextBtn.connect('clicked(bool)', do_find)
-        findRow.addWidget(findNextBtn)
-        layout.addLayout(findRow)
-
-        layout.addWidget(browser)
-        closeBtn = qt.QPushButton("Close")
-        closeBtn.connect('clicked(bool)', lambda checked=False: popup.close())
-        layout.addWidget(closeBtn)
-        popup.exec_()
+        """Open the Config Editor cheat sheet (Resources/Html/config_editor_help_cheatsheet.html) in the shared search/jump popup."""
+        show_cheatsheet_dialog(self, "Config Editor - Cheat Sheet", "config_editor_help_cheatsheet.html", CONFIG_EDITOR_HELP_SECTIONS)
 
     def _build_example_presets_html(self):
         """Render the example-presets catalogue (Resources/Presets/example_presets.json) as copyable HTML cards (name, one-line description, the preset's own JSON block), inserted into the static wrapper/style loaded from Resources/Html/example_presets_template.html."""
@@ -1720,23 +1884,25 @@ class ConfigEditorDialog(qt.QDialog):
         for edit in (self.presegEdit, self.dbEdit, self.studyDirEdit, self.keyColumnsEdit,
                      self.tableColumnsEdit, self.outputDirPatternEdit, self.groupByKeyColumnEdit,
                      self.segReferenceImageEdit, self.segPathPatternEdit,
-                     self.lmCsvColumnEdit, self.lmPathPatternEdit, self.lmTemplateEdit, self.lmColorEdit,
+                     self.markupsCsvColumnEdit, self.markupsPathPatternEdit, self.markupsTemplateEdit, self.markupsColorEdit,
                      self.wlMinEdit, self.wlMaxEdit,
                      self.sliceRotRedEdit, self.sliceRotYellowEdit, self.sliceRotGreenEdit,
                      self.beSegmentsFilterEdit, self.beOutputDirEdit, self.beOutputDirPatternEdit,
-                     self.statsReferenceImagesEdit, self.statsMetricsEdit, self.statsOutputPathEdit,
-                     self.landmarksOutputPathEdit,
+                     self.statsReferenceImagesEdit, self.statsSegmentsFilterEdit, self.statsMetricsEdit, self.statsOutputPathEdit,
+                     self.markupsOutputPathEdit,
                      self.brushDiameterEdit, self.activeEffectEdit):
             edit.text = ""
         self.beReferenceImageEdit.clear()
-        self.doneColumnEdit.text = "done"
+        self.markupsCoordinateSystemCombo.currentText = "RAS"
+        self.statusColumnEdit.text = "status"
         self.segOutputFilenameEdit.text = "segment.seg.nrrd"
-        for chk in (self.chkGroupByKey, self.chkSegEnabled, self.chkLmEnabled,
+        for chk in (self.chkGroupByKey, self.chkAutoSaveDb, self.chkSpecimenAnnotation, self.chkSegEnabled, self.chkMarkupsEnabled,
                     self.chkWlEnabled, self.chkSliceRotationEnabled, self.chkBeEnabled, self.chkBeExportSegments,
-                    self.chkBeExportMarkups, self.chkBeComputeStats, self.chkBeLandmarksReport):
+                    self.chkBeExportMarkups, self.chkBeComputeStats, self.chkBeMarkupsReport):
             chk.checked = False
+        self.chkStatusFilter.checked = True
         self._onBeEnabledToggled(False)
-        self.chkLmWritable.checked = True
+        self.chkMarkupsWritable.checked = True
         self.chkBrushAbsolute.checked = True
         self.radioRadiological.setChecked(True)
         self.overwriteModeCombo.currentText = "none"
@@ -1755,6 +1921,7 @@ class ConfigEditorDialog(qt.QDialog):
         self._image_advanced = []
         self.segTable.setRowCount(0)
         self._segment_colors = []
+        self.factorColumnsTable.setRowCount(0)
 
     def _onNew(self):
         """Start a blank config, after confirming it's OK to discard any unsaved changes."""
@@ -1820,13 +1987,18 @@ class ConfigEditorDialog(qt.QDialog):
             # key_columns is set above FIRST so it's already excluded from
             # the quick-add list this call builds.
             self._onPresegChanged(self._preseg_abs_path)
-        self.doneColumnEdit.text = cfg.get("done_column", "done")
+        self.statusColumnEdit.text = cfg.get("status_column", "status")
         self.tableColumnsEdit.text = ",".join(cfg.get("table_columns", []))
         self.outputDirPatternEdit.text = cfg.get("output_dir_pattern", "") or ""
 
+        self.chkStatusFilter.checked = bool((cfg.get("status_filter", {}) or {}).get("enabled", True))
         gbk = cfg.get("group_by_key", {}) or {}
         self.chkGroupByKey.checked = bool(gbk.get("enabled"))
+        self.chkAutoSaveDb.checked = bool(cfg.get("auto_save_database", False))
         self.groupByKeyColumnEdit.text = gbk.get("column", "") or ""
+
+        for fc in cfg.get("factor_columns", []) or []:
+            self._add_factor_column_row(fc)
 
         # defaults/presets loaded BEFORE the images loop below, so each row's
         # Preset dropdown is populated with the right choices as it's created
@@ -1850,14 +2022,14 @@ class ConfigEditorDialog(qt.QDialog):
         for s in seg.get("segments", []):
             self._add_segment_row(s)
 
-        lm = cfg.get("landmarks", {}) or {}
-        self.chkLmEnabled.checked = bool(lm.get("enabled"))
-        self.lmCsvColumnEdit.text = lm.get("csv_column", "") or ""
-        self.lmPathPatternEdit.text = lm.get("path_pattern", "") or ""
-        self.lmTemplateEdit.text = lm.get("template_path", "") or ""
-        self.chkLmWritable.checked = lm.get("writable", True)
-        if lm.get("color"):
-            self.lmColorEdit.text = ",".join(str(c) for c in lm["color"])
+        markups = cfg.get("markups", {}) or {}
+        self.chkMarkupsEnabled.checked = bool(markups.get("enabled"))
+        self.markupsCsvColumnEdit.text = markups.get("csv_column", "") or ""
+        self.markupsPathPatternEdit.text = markups.get("path_pattern", "") or ""
+        self.markupsTemplateEdit.text = markups.get("template_path", "") or ""
+        self.chkMarkupsWritable.checked = markups.get("writable", True)
+        if markups.get("color"):
+            self.markupsColorEdit.text = ",".join(str(c) for c in markups["color"])
 
         self._refresh_vr_table()
         vr_by_image = {}
@@ -1901,6 +2073,7 @@ class ConfigEditorDialog(qt.QDialog):
         self.orientationMarker2dTypeCombo.currentText = ws.get("orientation_marker_2d_type") or "(unset)"
         self.orientationMarker2dSizeCombo.currentText = ws.get("orientation_marker_2d_size") or "(unset)"
         self.radioNeurological.setChecked(ws.get("view_convention") == "neurological")
+        self.chkSpecimenAnnotation.checked = bool(ws.get("specimen_annotation"))
         self.radioRadiological.setChecked(ws.get("view_convention") != "neurological")
 
         be = cfg.get("batch_export", {}) or {}
@@ -1914,10 +2087,12 @@ class ConfigEditorDialog(qt.QDialog):
         self.beOutputDirPatternEdit.text = be.get("output_dir_pattern", "") or ""
         self.chkBeComputeStats.checked = bool(be.get("compute_stats"))
         self.statsReferenceImagesEdit.text = ",".join(be.get("stats_reference_images") or [])
+        self.statsSegmentsFilterEdit.text = ",".join(be.get("stats_segments_filter") or [])
         self.statsMetricsEdit.text = ",".join(be.get("stats_metrics") or [])
         self.statsOutputPathEdit.text = be.get("stats_output_path", "") or ""
-        self.chkBeLandmarksReport.checked = bool(be.get("landmarks_report"))
-        self.landmarksOutputPathEdit.text = be.get("landmarks_output_path", "") or ""
+        self.markupsCoordinateSystemCombo.currentText = be.get("markups_coordinate_system", "RAS") or "RAS"
+        self.chkBeMarkupsReport.checked = bool(be.get("markups_report"))
+        self.markupsOutputPathEdit.text = be.get("markups_output_path", "") or ""
 
         se = cfg.get("segment_editor", {}) or {}
         self.overwriteModeCombo.currentText = se.get("overwrite_mode", "none") or "none"
@@ -2007,16 +2182,25 @@ class ConfigEditorDialog(qt.QDialog):
             "database_csv_path": self.dbEdit.text.strip(),
             "preseg_csv_path": self.presegEdit.text.strip(),
             "key_columns": _csv_list(self.keyColumnsEdit.text) or ["ID"],
-            "done_column": self.doneColumnEdit.text.strip() or "done",
+            "status_column": self.statusColumnEdit.text.strip() or "status",
         }
         table_cols = _csv_list(self.tableColumnsEdit.text)
-        cfg["table_columns"] = table_cols or (cfg["key_columns"] + [cfg["done_column"]])
+        cfg["table_columns"] = table_cols or (cfg["key_columns"] + [cfg["status_column"]])
         out_pattern = self.outputDirPatternEdit.text.strip()
         if out_pattern:
             cfg["output_dir_pattern"] = out_pattern
 
+        if self.chkAutoSaveDb.checked:
+            cfg["auto_save_database"] = True
+
+        if not self.chkStatusFilter.checked:
+            cfg["status_filter"] = {"enabled": False}   # on is the default, so only the off state is written
         if self.chkGroupByKey.checked:
             cfg["group_by_key"] = {"enabled": True, "column": self.groupByKeyColumnEdit.text.strip()}
+
+        factor_columns = self._read_factor_column_rows()
+        if factor_columns:
+            cfg["factor_columns"] = factor_columns
 
         images = self._read_image_rows()
         if images:
@@ -2034,17 +2218,17 @@ class ConfigEditorDialog(qt.QDialog):
             seg["segments"] = segments
             cfg["segmentation"] = seg
 
-        if self.chkLmEnabled.checked:
-            lm = {"enabled": True, "writable": self.chkLmWritable.checked}
-            if self.lmCsvColumnEdit.text.strip():
-                lm["csv_column"] = self.lmCsvColumnEdit.text.strip()
-            if self.lmPathPatternEdit.text.strip():
-                lm["path_pattern"] = self.lmPathPatternEdit.text.strip()
-            if self.lmTemplateEdit.text.strip():
-                lm["template_path"] = self.lmTemplateEdit.text.strip()
-            if self.lmColorEdit.text.strip():
-                lm["color"] = [_f(c) for c in self.lmColorEdit.text.split(",")]
-            cfg["landmarks"] = lm
+        if self.chkMarkupsEnabled.checked:
+            markups = {"enabled": True, "writable": self.chkMarkupsWritable.checked}
+            if self.markupsCsvColumnEdit.text.strip():
+                markups["csv_column"] = self.markupsCsvColumnEdit.text.strip()
+            if self.markupsPathPatternEdit.text.strip():
+                markups["path_pattern"] = self.markupsPathPatternEdit.text.strip()
+            if self.markupsTemplateEdit.text.strip():
+                markups["template_path"] = self.markupsTemplateEdit.text.strip()
+            if self.markupsColorEdit.text.strip():
+                markups["color"] = [_f(c) for c in self.markupsColorEdit.text.split(",")]
+            cfg["markups"] = markups
 
         vr_entries = self._read_vr_rows()
         if vr_entries:
@@ -2088,6 +2272,9 @@ class ConfigEditorDialog(qt.QDialog):
         if self.radioNeurological.isChecked():
             ws["view_convention"] = "neurological"
 
+        if self.chkSpecimenAnnotation.checked:
+            ws["specimen_annotation"] = True
+
         if ws:
             cfg["workspace"] = ws
 
@@ -2097,7 +2284,7 @@ class ConfigEditorDialog(qt.QDialog):
                 "export_segments": self.chkBeExportSegments.checked,
                 "export_markups": self.chkBeExportMarkups.checked,
                 "compute_stats": self.chkBeComputeStats.checked,
-                "landmarks_report": self.chkBeLandmarksReport.checked,
+                "markups_report": self.chkBeMarkupsReport.checked,
             }
             if self.beReferenceImageEdit.currentText.strip():
                 be["reference_image"] = self.beReferenceImageEdit.currentText.strip()
@@ -2111,6 +2298,9 @@ class ConfigEditorDialog(qt.QDialog):
             filt = _csv_list(self.statsReferenceImagesEdit.text)
             if filt:
                 be["stats_reference_images"] = filt
+            filt = _csv_list(self.statsSegmentsFilterEdit.text)
+            if filt:
+                be["stats_segments_filter"] = filt
             metrics_text = self.statsMetricsEdit.text.strip()
             if metrics_text:
                 metrics = []
@@ -2124,8 +2314,10 @@ class ConfigEditorDialog(qt.QDialog):
                 be["stats_metrics"] = metrics
             if self.statsOutputPathEdit.text.strip():
                 be["stats_output_path"] = self.statsOutputPathEdit.text.strip()
-            if self.landmarksOutputPathEdit.text.strip():
-                be["landmarks_output_path"] = self.landmarksOutputPathEdit.text.strip()
+            if self.markupsCoordinateSystemCombo.currentText != "RAS":
+                be["markups_coordinate_system"] = self.markupsCoordinateSystemCombo.currentText
+            if self.markupsOutputPathEdit.text.strip():
+                be["markups_output_path"] = self.markupsOutputPathEdit.text.strip()
             cfg["batch_export"] = be
 
         overwrite = self.overwriteModeCombo.currentText

@@ -1,0 +1,97 @@
+<!--
+  Main module - Help / Cheat Sheet content.
+  Loaded by the module's Help section (via HelpDialog.show_cheatsheet_dialog) into a
+  QTextBrowser (Qt's rich-text subset of HTML/CSS - keep markup simple). The anchors below
+  are listed in MODULE_HELP_SECTIONS in GenericSpecimenEngine.py - keep the two in sync.
+-->
+<style>
+  body { font-family: sans-serif; font-size: 13px; }
+  h2 { font-size: 15px; margin: 14px 0 4px 0; padding: 2px 6px;
+       background-color: #2c5f8a; color: white; border-radius: 3px; }
+  ul, ol { margin: 2px 0 10px 0; padding-left: 18px; }
+  li { margin-bottom: 4px; }
+  code { background-color: #eef2f6; color: #b3405a; padding: 1px 4px; border-radius: 3px; }
+  .note { color: #555; font-style: italic; }
+  table.ref { border-collapse: collapse; margin: 4px 0 10px 0; }
+  table.ref th, table.ref td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+  table.ref th { background-color: #2c5f8a; color: white; }
+</style>
+
+<a name="workflow"></a>
+<h2>&#128221; Workflow</h2>
+<ol>
+<li>Pick the study <b>config.json</b> (<b>Select .json file</b>) - or build one with <b>Config Editor...</b> - in <b>Advanced Study Settings</b>.</li>
+<li>Press <b>Initialize Study</b> (the button between the two blocks; pastel green until you have). The specimen table fills; everything that needs an initialized study is disabled until this succeeds.</li>
+<li>Select a specimen row and press <b>Load selected specimen</b>: its images, segmentation and markups open in the configured layout.</li>
+<li>Segment / place markups, then <b>Save progress for active specimen</b>.</li>
+<li><b>Close active specimen</b> - optionally marking it <i>to review</i> or <i>finished</i> on the way out.</li>
+<li>When specimens are <i>finished</i>, <b>Batch export</b> processes them all in one pass.</li>
+</ol>
+
+<a name="study-settings"></a>
+<h2>&#9881; Study buttons and Advanced Study Settings</h2>
+<ul>
+<li><b>Initialize Study</b> (its own button, between Advanced Study Settings and the Specimen browser) - loads the config and both CSVs and builds the specimen list. It is pastel green until a study is initialized, as a nudge to press it. Columns the config expects but <code>database.csv</code> lacks are offered for creation (the status and factor columns always; plain table columns only if ticked, as they may be typos). Once you confirm, the new columns are written to <code>database.csv</code> immediately.</li>
+<li><b>Save database CSV</b> - appears under Initialize Study once a study is initialized; writes the live table back to <code>database.csv</code> on demand. Hidden when the config has <code>auto_save_database</code> on: then <code>database.csv</code> is written to disk after every table edit.</li>
+<li><b>Batch export</b> - appears under Initialize Study once a study is initialized, but only if the config turns batch export on.</li>
+<li><b>Advanced Study Settings</b> (collapsed by default) - <b>Study config (.json)</b> is the active config; the field's border shows whether the path is missing, a folder or a valid file, and if it isn't a file, Initialize Study / Config Editor offer <i>Browse</i>, <i>Open clean Config Editor</i> or <i>Cancel</i>. <b>Database / Preseg CSV</b> override the two CSV paths in the config.</li>
+</ul>
+
+<a name="specimen-table"></a>
+<h2>&#128203; Specimen table</h2>
+<ul>
+<li>One row per specimen. Click anywhere in a row to select it; the <b>Selected specimen ID</b> label follows the selection.</li>
+<li>The columns are the config's <b>Table columns</b>. Plain columns are editable text; any of them can be written back to <code>database.csv</code>.</li>
+<li><b>Factor columns</b>: a <i>binary</i> factor is a checkbox (0/1), a <i>multilevel</i> factor is a dropdown of its levels.</li>
+<li>The <b>Specimen browser</b> block holds the filters, the table and the load/save/close/reset buttons.</li>
+<li>The last column is always <b>Status</b> (see below). The table is as tall as its rows, up to a cap, so the whole module never becomes scrollable.</li>
+<li>The <b>Group</b> filter (if the config enables <i>group by key</i>) and the <b>Status</b> filter (a checklist - tick the statuses to show; all ticked = no filtering) narrow the table. Both sit at the top of the <b>Specimen browser</b> block and are viewing conveniences only - Batch export ignores them. The Group filter can't be switched while a specimen is loaded.</li>
+<li>The coloured dot next to the specimen IDs: gray = selected but not loaded, green = loaded and saved, orange = loaded with unsaved segmentation/markups changes.</li>
+<li>Optional <b>specimen annotation</b> (config: <code>workspace.specimen_annotation</code>): the loaded specimen's ID, table values and status as text in the views.</li>
+</ul>
+
+<a name="status"></a>
+<h2>&#127912; Status</h2>
+<table class="ref">
+<tr><th>Value</th><th>Status</th><th>Row colour</th></tr>
+<tr><td><code>0</code></td><td>untouched</td><td>white</td></tr>
+<tr><td><code>1</code></td><td>in progress</td><td>light blue</td></tr>
+<tr><td><code>2</code></td><td>to review</td><td>pale yellow</td></tr>
+<tr><td><code>3</code></td><td>finished</td><td>darker green</td></tr>
+</table>
+<ul>
+<li>Stored as that integer in the config's <code>status_column</code> of <code>database.csv</code>. Empty or unknown = untouched.</li>
+<li><b>Automatic:</b> <code>0</code> &rarr; <code>1</code> when a specimen loads from its own saved file or is saved. This never lowers <i>to review</i> / <i>finished</i>. Closing without changes leaves the status alone.</li>
+<li><b>Manual:</b> the dropdown in the table, or the buttons of the Close dialog.</li>
+<li>Batch export processes only <i>finished</i> specimens.</li>
+</ul>
+
+<a name="load-save-close"></a>
+<h2>&#128190; Load, Save, Close</h2>
+<ul>
+<li><b>Load selected specimen</b> - one specimen can be active at a time. Close it before loading another.</li>
+<li><b>Save progress for active specimen</b> - writes its segmentation and markups (and any image you changed) into the specimen's output folder. <b>Ctrl+S</b> does the same, from any module, while a specimen is loaded (quietly, with a status-bar note); without a loaded specimen Ctrl+S is Slicer's own Save scene again.</li>
+<li><b>Close active specimen</b> - never saves the specimen's work; save first if you want to keep it. The dialog offers <i>Yes</i>, <i>Yes, mark to review</i>, <i>Yes, mark finished</i> and <i>No</i>.</li>
+</ul>
+
+<a name="reset"></a>
+<h2>&#9888; Reset selected specimen</h2>
+<ul>
+<li>Works on the selected row - the specimen does not have to be loaded.</li>
+<li><b>Permanently deletes</b> the specimen's saved segmentation and markups files and sets its status back to <i>untouched</i>. Source images are never touched.</li>
+<li>The confirmation shows the specimen ID and the exact files; the button only enables after typing <code>RESET</code>. If the specimen is loaded, it is closed and unsaved work is discarded. This cannot be undone.</li>
+</ul>
+
+<a name="batch-export"></a>
+<h2>&#128230; Batch export</h2>
+<ul>
+<li>Runs once against every <i>finished</i> specimen, without opening the interactive viewer for each: segment files, custom segment statistics, markups files and a markup summary - whichever the config enables.</li>
+<li>Everything about what it produces and where it writes is set in the Config Editor's <b>Batch export</b> tab.</li>
+</ul>
+
+<a name="config"></a>
+<h2>&#128273; Config</h2>
+<ul>
+<li>The whole study is described by one JSON file - use <b>Config Editor...</b> for a guided form; its own <b>Help</b> button has the full key reference.</li>
+<li>The complete schema is in the project README.</li>
+</ul>

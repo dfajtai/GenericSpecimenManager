@@ -13,6 +13,7 @@
 - [x] ~~_Batch mode custom 'segment statistics' reporting to a CSV file._~~ [2026-09-22]
 - [x] ~~_Batch export (export segmentations to masks - segment by segment, handling overlap.) fixes._~~ [2026-09-22]
 - [x] ~~_Batch export rework with additional features (segment statistics, landmark summary, and so)_~~ [2026-09-23]
+- [x] ~~_Config Editor / Batch Export tab refinement: reordered batch operations, landmarks->markups rename throughout, Segment export settings / Segment statistics settings (own segments filter) / Markup summary settings split, {index} anti-overwrite pattern logic_~~ [2026-09-24]
 
 ## Dropped
 
@@ -20,15 +21,6 @@
 - [x] ~~Rewrite ConfigEditor - Easier to extend, every tab affects a list of Config classes, no overlaps between functionality or resopnsibility (but keep hierarhycal overrides).~~ [2026-09-17]
 
 ## Open
-
-- [ ] Config Editor / Batch Export fül. Refinement, rework.
-      Fontos, hogy minden változás vissza legyen vezetve a teljes kódba, így a HELP és a README is legyen koheren a végén
-      Batch operations sorrend változik: export segments, Custom segment statistics, ÚJ SOR, Export markups, Makrup summary.
-      A "landmarks" legyen mindenhol "markups"-ra átnevezve (Config Editor, tooltipek, Help, kód, Config model, Readme, mindenhol...). Legyen koherens a slicer elnevezéssel, és konzisztens az egész kódbázisban.
-      A Batch Operations, Export settings, Landmark sumamry settings, mellé nem kell a szöveg.
-      Export settings -> Segment export settings-re átnevezve. Reference image maradhat, segments filter, export dir, mind maradhat.
-      Ez után legyen a Segment statistics settings rész. Kb. minden maradhat, de másodiknak adj hozzá egy külön segments filtert (a korábbi segments filter logikával azonos, de ez csak a segment stat ot befolyásolja.). Adj a {date}, {time}, {datetime} logika mellé egy index logikát, ami \_XX (két integeres index, \_01-től kezdve) ad a fájlnév után - kiterjesztés elé - automatikusan, hogy elkerülje a felülírást (csak akkor törődik a felülírással, ha az {index} tag szerepel, különben kérdés nélkül felülírja a korábbit.)
-      Aztán jöhet a MARKUP (korábbi landmark) summary settings. Ez változatlan - csak ugye át van nevezve. A BatchExporter a háttérben adja hozzá a {date}, {time}, {datetime}, plusz az új {index} logikát.
 
 * [ ] **Examples/ folder: real configs + README**
 

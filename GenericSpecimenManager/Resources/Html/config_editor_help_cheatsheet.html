@@ -1,0 +1,238 @@
+<!--
+  Config Editor - Help / Cheat Sheet content.
+  Loaded by ConfigEditorDialog._onShowHelp() (via HelpDialog.show_cheatsheet_dialog) into a QTextBrowser (Qt's rich-text
+  subset of HTML/CSS - not a full browser engine, keep markup simple).
+  Static content only - if you need per-preset dynamic content, see
+  example_presets_template.html instead, which has a {{CONTENT}} placeholder.
+-->
+<style>
+  body { font-family: sans-serif; font-size: 13px; }
+  h2 { font-size: 15px; margin: 14px 0 4px 0; padding: 2px 6px;
+       background-color: #2c5f8a; color: white; border-radius: 3px; }
+  h2:first-child { margin-top: 0; }
+  ul { margin: 2px 0 10px 0; padding-left: 18px; }
+  li { margin-bottom: 4px; }
+  code { background-color: #eef2f6; color: #b3405a; padding: 1px 4px; border-radius: 3px; }
+  .note { color: #555; font-style: italic; }
+  table.merge { border-collapse: collapse; margin: 4px 0 10px 0; }
+  table.merge td { border: 1px solid #ccc; padding: 3px 8px; }
+  table.merge td.step { background-color: #eef2f6; font-weight: bold; text-align: center; }
+  table.ref { border-collapse: collapse; margin: 4px 0 10px 0; width: 100%; }
+  table.ref th, table.ref td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+  table.ref th { background-color: #2c5f8a; color: white; }
+  table.ref tr:nth-child(even) td { background-color: #f4f6f8; }
+</style>
+
+<a name="workflow"></a>
+<h2>&#128221; Workflow</h2>
+<ul>
+<li><b>New</b> / <b>Load from file...</b> - both ask Save/Discard/Cancel first if the current form has unsaved changes (the title bar shows a trailing <code>*</code> while dirty).</li>
+<li>Opening this dialog from the main module pre-loads whatever config is currently active there - you're usually editing the SAME config the module already has open, not starting fresh.</li>
+<li><b>Save config</b> always builds from the tabs (via the same logic as <b>Manual edit config &rarr; Refresh</b>) - it never silently saves stray text you typed somewhere without going through a field.</li>
+</ul>
+
+<a name="general"></a>
+<h2>&#128736; General</h2>
+<ul>
+<li><code>study_dir</code> - base folder every relative path resolves against. Empty = the preseg CSV's own folder.</li>
+<li><b>Key columns</b> - the composite specimen ID, e.g. <code>ID</code> or <code>ID,measurement</code> - must exist, with matching values, in <b>both</b> CSVs. Use <b>"Show CSV columns..."</b> to check.</li>
+<li><b>Table columns</b> - which <code>database.csv</code> columns appear (and are editable) in the main module's table. Any column works, not just <code>status</code>.</li>
+<li><b>Output dir pattern</b> - where a specimen's own files (segmentation, markups, any image explicitly saved) live for <b>interactive</b> work: resolved per specimen (any key/<code>database.csv</code>/<code>preseg.csv</code> column in <code>{braces}</code>), used every time you load/save a specimen through the normal GUI ("Load selected specimen"/"Save progress"). This is different from Batch export's own root dir/Segment export pattern further down, which only apply during a headless Batch Export run and never touch interactive work - the two are independent, and either can be set without the other.</li>
+<li><b>Status column</b> - the <code>database.csv</code> column holding each specimen's status (any name, e.g. <code>done</code>; created if missing): <code>0</code> untouched, <code>1</code> in progress, <code>2</code> to review, <code>3</code> finished. The main module always shows it as the table's last column, headed <i>Status</i>.</li>
+<li><b>Filtering</b> - <b>Group specimens by key</b> (its key column sits on the same row) shows a group-select combo after Initialize Study, filtering the specimen table by the chosen Group-by key (e.g. <code>batch</code>); <b>Filter by status</b> (on by default) shows a status checklist above the table. Both are purely main-module viewing conveniences - they do NOT affect the Batch Export tab.</li>
+<li><b>Auto-save database</b> - <code>auto_save_database</code>: when on, <code>database.csv</code> is written after every table edit and the main module's "Save database CSV" button is hidden. Default off.</li>
+<li><b>Factor columns</b> - a table (Add factor column / Remove selected) turning any <code>database.csv</code> column into a checkbox (<b>binary</b>) or a level dropdown (<b>multilevel</b>, with its own comma-separated Levels field) in the main module's specimen table, instead of plain free-text editing. A level is always written to the CSV as its exact text - never a numeric index - so the file stays directly readable by anything else. Independent of Table columns above: a factor column only actually renders as a checkbox/dropdown if it's ALSO listed there.</li>
+</ul>
+
+<a name="batch-export"></a>
+<h2>&#128230; Batch export</h2>
+<ul>
+<li>Its own tab; one "Batch Export" button in the main module (under Initialize Study, shown only when this is enabled) runs it once, against every specimen with status <code>finished</code> in the database, all in one pass, without opening the interactive viewer for each one.</li>
+<li><b>Enable batch export</b> - turns this whole tab on; nothing below runs otherwise (their values are kept either way, just unused while off).</li>
+<li><b>Batch export root dir</b> - the root every pattern below is anchored to: segment/markup files, and (unless absolute) the Segment export/Report/Markup summary patterns too. Empty -> <code>study_dir</code>; relative -> resolved under <code>study_dir</code>; absolute -> used as-is.</li>
+<li><b>Placeholders</b> the patterns below can resolve - each field further down says which of these it actually supports:
+<ul>
+<li><code>{column}</code> - any key/<code>database.csv</code>/<code>preseg.csv</code> column value for that specimen</li>
+<li><code>{date}</code> / <code>{time}</code> / <code>{datetime}</code> - the current date/time (<code>YYYY-MM-DD</code> / <code>HH-MM-SS</code> / combined)</li>
+<li><code>{index}</code> - only when present in the pattern: a two-digit, <code>_01</code>-based counter inserted before the extension, picking the lowest suffix not already on disk, so an existing file is never overwritten</li>
+</ul></li>
+<li><b>Batch operations</b>:
+<ul>
+<li><b>Export segments</b> - each segment written to its own labelmap file.</li>
+<li><b>Custom segment statistics</b> - volume, min/max/mean/median/std, percentiles, computed straight from Slicer's own segment export (handles overlapping segments correctly, no third-party file reader) - needs numpy installed, nothing else. Configured in "Segment statistics settings" below.</li>
+<li><b>Export markups</b> - each specimen's markups .mrk.json file, PLUS a per-specimen markups CSV (<code>label</code>, <code>x</code>, <code>y</code>, <code>z</code> - world/RAS position, read straight from the live markups node) automatically alongside it - no separate switch needed for that part.</li>
+<li><b>Markup summary</b> - needs Export markups above also checked. In addition to the automatic per-specimen markups CSV, combines every specimen's markup points into one or more CSVs (one row per point, key columns prepended) - configured in "Markup summary settings" below.</li>
+</ul></li>
+<li><b>Segment export settings</b>:
+<ul>
+<li><b>Reference image</b> - the geometry every exported segment labelmap is built on. "Suggest" fills it from the Images tab so you can just pick one.</li>
+<li><b>Segments filter</b> - comma-separated segment names to limit which segments get exported to a file; empty = all. "Use all segments" fills it from the Segmentation tab. Independent of the Segment statistics settings' own filter below.</li>
+<li><b>Segment export pattern</b> - per-specimen subfolder joined onto Batch export root dir above. Supports <code>{column}</code> only (not <code>{date}</code>/<code>{time}</code>/<code>{datetime}</code>/<code>{index}</code>), e.g. <code>{batch}/{ID}</code> routes different specimens into different subfolders just by referencing that column. Empty -> your key columns, joined.</li>
+</ul></li>
+<li><b>Segment statistics settings</b>:
+<ul>
+<li><b>Stats reference image(s)</b> - one or more Images-tab names (comma-separated) to sample intensities from; "Use all loaded images" fills in every image in the Images tab. Each sample image gets its OWN stats row per segment (an <code>image</code> column joins the key/segment columns) - all must share the segmentation's geometry (a mismatched one is skipped with a warning).</li>
+<li><b>Segments filter</b> - a SEPARATE comma-separated segment-name filter, independent of Segment export settings' own filter above: which segments get a statistics row. A segment can be included here without being exported to a file, or vice versa. "Use all segments" fills it from the Segmentation tab.</li>
+<li><b>Metrics</b> - comma-separated: volume, min, max, mean, median, std, and/or <code>percentile_&lt;N&gt;</code> (e.g. <code>percentile_25</code>); leave empty for the built-in default, or "Insert default" to see/edit it.</li>
+<li><b>Report pattern</b> - a file path anchored directly to Batch export root dir above (NOT nested through the Segment export pattern). Supports all four placeholders above: <code>{column}</code>, <code>{date}</code>/<code>{time}</code>/<code>{datetime}</code>, and <code>{index}</code> (only if present - otherwise an existing file is overwritten as usual). Same final path = one shared CSV, different paths = separate files. Empty -> <code>report.csv</code>. Rows are ordered by key columns, then image, then segment name.</li>
+</ul></li>
+<li><b>Markup CSV coordinate encoding</b> - RAS (default) or LPS, applied to the point x/y/z values written to BOTH the per-specimen markups CSV (from Export markups) and the combined Markup summary CSV below. The <code>.mrk.json</code> file itself is untouched either way. RAS is Slicer's own world coordinate, written as-is; LPS flips x and y (<code>LPS = -x, -y, z</code> relative to RAS) - use it if the CSV feeds an ITK/DICOM-based pipeline that expects LPS.</li>
+<li><b>Markup summary settings</b> (only used when "Markup summary" is checked; needs Export markups checked too):
+<ul>
+<li><b>Markup summary pattern</b> - a file path anchored directly to Batch export root dir above (NOT nested through the Segment export pattern). Supports all four placeholders above: <code>{column}</code>, <code>{date}</code>/<code>{time}</code>/<code>{datetime}</code>, and <code>{index}</code> (only if present - otherwise an existing file is overwritten as usual). Same final path = one shared CSV, different paths = separate files. Points are read straight from each specimen's live markups node (label + world/RAS position) - NOT re-parsed from the .mrk.json file's stored "orientation" field, which is a display-only local axis frame (or, at the file level, just the LPS/RAS sign convention), not a per-point transform to apply on top of position. Empty -> <code>markups_report.csv</code>. Rows are ordered by key columns, then label.</li>
+</ul></li>
+</ul>
+
+<a name="images"></a>
+<h2>&#128444; Images</h2>
+<ul>
+<li><b>Quick-add table</b> - one row per preseg CSV column (key columns excluded). Check <b>Add</b> to include it as an image row; check <b>Labelmap</b> if it's a mask/label image instead of a regular volume.</li>
+<li><code>Pattern</code> (regex) - instead of one fixed image, opens <b>one image per matching, non-empty</b> <code>preseg.csv</code> column for a given specimen. Name = that column's name (Strip prefix/suffix trims it). Different specimens can end up with different numbers of images.</li>
+<li><b>Role</b> - background/label/foreground control slice-view layers (label/foreground also use Opacity). <code>(none)</code> = loaded but not shown as a layer.</li>
+<li><b>Preset</b> - a <u>dropdown</u>, populated live from whatever's currently in the Presets JSON field (Defaults/Presets tab). Add/rename a preset there and every row's list updates immediately, keeping each row's current selection if it's still valid.</li>
+<li><b>Color table</b> - also a dropdown, pre-filled with common built-in Slicer color tables (Grey, Rainbow, the PET-* and Warm/Cool families, single-hue <code>vtkMRMLColorTableNode*</code> tables) - but it's <u>editable</u>, so type any other valid color node ID/name if yours isn't listed.</li>
+<li><b>Edit advanced...</b> - window/level, threshold, interpolate for just that row. Rows with something set here are tinted and show a short summary in the <b>Advanced</b> column. The <b>Effective settings</b> box below the table always shows the actual merged result for the selected row.</li>
+</ul>
+<table class="merge">
+<tr><td class="step">1</td><td><code>defaults.image</code> - applies to every row</td></tr>
+<tr><td class="step">2</td><td>named <code>preset</code> - only if that row's Preset column names one</td></tr>
+<tr><td class="step">3</td><td>the row's own fields - always wins</td></tr>
+</table>
+
+<a name="segmentation"></a>
+<h2>&#129504; Segmentation</h2>
+<ul>
+<li><b>Reference image</b> - an Images-tab <code>name</code> used as the geometry reference for the whole segmentation.</li>
+<li><b>Path pattern</b> - fallback naming for segment rows with no CSV column/path of their own, e.g. <code>{ID}/{measurement}/{ID}-{segment_name}.nii.gz</code>.</li>
+<li><b>Source = file</b> - tries CSV column / path pattern, falls back to an empty placeholder if nothing resolves. <b>Source = empty</b> - never tries a file, always a manual placeholder.</li>
+</ul>
+
+<a name="markups"></a>
+<h2>&#128204; Markups</h2>
+<ul>
+<li><b>Template file</b> - if a specimen has no markups yet, this file loads as the starting point (renamed to that specimen) instead of an empty fiducial list.</li>
+<li><b>Color</b> - the markup point color: <i>Set color...</i> opens a color picker, <i>Clear</i> leaves Slicer's default.</li>
+</ul>
+
+<a name="workspace"></a>
+<h2>&#128421; Workspace</h2>
+<ul>
+<li>Everything here is applied once, per specimen, to the 3D Slicer <i>workspace</i> itself - not to any data.</li>
+<li><b>Window/level</b> - blanket min/max for every loaded volume. <b>Slice rotation</b> - in-plane rotation (degrees) for Red/Yellow/Green, same as the Reformat module's slider; leave a view's field empty to leave it alone.</li>
+<li><b>Crosshair</b> - Mode/Behavior/Thickness dropdowns (editable - type the exact Slicer/VTK constant name if yours isn't listed). Leave at <code>(unset)</code> to keep this module's usual default (ShowBasic / OffsetJumpSlice / Fine).</li>
+<li><b>Ruler</b> - adds a scale ruler to every slice view. <code>(unset)</code> = leave alone.</li>
+<li><b>3D marker / 2D marker</b> - the orientation-marker widget (Axes/Cube/Human) shown in the 3D view and/or every slice view - both use the same underlying property, configured independently. Volume rendering always shows a 3D marker (Axes/Large by default) regardless, unless overridden here.</li>
+<li><b>View convention</b> - Radiological (Slicer's own default: patient's right on screen-left) or Neurological (patient's right on screen-right). Only affects Axial/Coronal - Sagittal has no left/right to flip.</li>
+<li><b>Specimen annotation</b> (optional, <code>workspace.specimen_annotation</code>) - while a specimen is loaded, shows yellow text in the top-left of the Red/Yellow/Green and 3D views: the ID (key columns joined with <code>-</code>), a line, one <code>column: value</code> line per remaining Table column (the status column excluded), a line, and the status. Updates live as the table is edited; removed when the specimen is closed.</li>
+</ul>
+
+<a name="segment-editor"></a>
+<h2>&#128394; Segment editor</h2>
+<ul>
+<li><b>Overwrite mode = none</b> - same as the Segment Editor's "Allow overlap" checkbox. <code>all_segments</code>/<code>visible_segments</code> restrict painting so it doesn't eat into other segments.</li>
+<li><b>Use absolute size (mm)</b> checked + shape <code>sphere</code> - fixed-size 3D brush in millimeters, regardless of zoom (e.g. always exactly 5&nbsp;mm). Unchecked - size as a % of the slice view instead (grows/shrinks as you zoom).</li>
+<li>Applied <b>once</b>, at Study Init - not re-applied per specimen. It's set on two places so it works whether or not Segment Editor was already opened this session:
+  <ul>
+  <li>the <b>default/template</b> node - used when Segment Editor is opened for the <i>first</i> time this session;</li>
+  <li>an already-<b>live</b> Segment Editor node, if one already exists (you opened the module earlier).</li>
+  </ul>
+</li>
+<li><b>Active effect on load</b> - which effect (e.g. <code>Paint</code>) should already be selected. Left empty, the user just picks an effect manually - the brush size/shape above still applies whenever they pick Paint.</li>
+</ul>
+<p><b>Raw attributes - what it's for and how to use it.</b> Slicer stores each effect's settings as plain key/value
+pairs on the segment editor node. <b>Common</b> parameters shared by multiple effects (brush size/shape) have
+<u>no prefix</u> - just the bare name. <b>Effect-specific</b> parameters are prefixed <code>EffectName.ParamName</code>
+(a literal dot). Example dump of a real node's attributes:</p>
+<pre>BrushAbsoluteDiameter: 25
+BrushDiameterIsRelative: 1
+BrushSphere: 0
+Paint.ColorSmudge: 0
+Threshold.MinimumThreshold: 69.75
+Threshold.AutoThresholdMethod: OTSU</pre>
+<p>So <code>"attributes": {"BrushSphere": "1"}</code> is correct; <code>"Paint,BrushSphere"</code> or
+<code>"Paint.BrushSphere"</code> is <b>not</b> a real key and silently does nothing. If a setting you configured
+through the structured fields above doesn't seem to stick, the fastest way to find the real key on <i>your</i>
+Slicer version:</p>
+<ol>
+<li>Open Segment Editor by hand, change the setting you want (e.g. tick "Sphere brush").</li>
+<li>Open the Python console and run: <code>print(slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLSegmentEditorNode"))</code></li>
+<li>Read the exact attribute name + value from the printed list, and add it under <b>Raw attributes</b> here
+(it's applied last, so it overrides the structured fields above if there's any conflict).</li>
+</ol>
+
+<a name="volume-rendering"></a>
+<h2>&#127760; Volume rendering</h2>
+<ul>
+<li>One row per Images-tab image. <b>Any number</b> can have <b>Enable</b> checked at once - each gets its own independent 3D volume rendering.</li>
+<li><b>Preset</b> - a built-in Slicer VR preset name (editable combo - type your own if it's not in the list).</li>
+<li><b>Min/Max</b> - optional. Rescales the preset's opacity/color transfer function into that scalar range, e.g. narrowing a CT preset to a specific Hounsfield window for this specimen's data.</li>
+<li><b>Offset</b> - optional. Shifts the transfer function by a fixed amount, keeping its shape/spacing (classic "Shift" behavior). Wins over Min/Max if both are set.</li>
+<li>Leave Min/Max/Offset all empty to use the preset exactly as shipped.</li>
+<li><b>Refresh image list</b> - re-syncs rows with the Images tab (new/renamed/removed images), keeping existing settings for images that still exist by name.</li>
+</ul>
+<p class="note">Note: the render itself is correct, but Slicer's own Volume Rendering module's "Shift" slider won't reflect the offset - cosmetic only.</p>
+
+<a name="defaults-presets"></a>
+<h2>&#127912; Defaults / Presets</h2>
+<p>Three layers, merged in this order for every image (last one wins, per field):</p>
+<table class="merge">
+<tr><td class="step">1</td><td><code>defaults.image</code> &ndash; applies to <b>every</b> image row automatically</td></tr>
+<tr><td class="step">2</td><td>the named <code>presets[&lt;name&gt;]</code> entry &ndash; only if that row's <b>Preset</b> column names one</td></tr>
+<tr><td class="step">3</td><td>the row's own columns / <b>Edit advanced...</b> popup &ndash; always wins</td></tr>
+</table>
+<p><b>Worked example.</b> Say you're setting up a multi-sequence MRI study:</p>
+<pre>"defaults": {
+  "image": { "type": "volume", "required": false, "interpolate": true }
+},
+"presets": {
+  "mri_t1":  { "window_level": {"auto": true}, "color_table": "Grey" },
+  "mri_flair": { "window_level": {"min": 0, "max": 400}, "color_table": "Grey" }
+}</pre>
+<p>Now three image rows:</p>
+<ul>
+<li><code>t1</code> &rarr; Preset = <code>mri_t1</code>, nothing else set.
+  Effective: <code>interpolate:true</code> (from defaults) + <code>window_level:auto, color_table:Grey</code> (from the preset).</li>
+<li><code>flair</code> &rarr; Preset = <code>mri_flair</code>, but its own Advanced popup sets <code>window_level: {min:0, max:600}</code>.
+  Effective: the row's own 0-600 wins over the preset's 0-400 - everything else from the preset still applies.</li>
+<li><code>dwi</code> &rarr; no Preset at all. Effective: just <code>type:volume, required:false, interpolate:true</code> from defaults - nothing else.</li>
+</ul>
+<p><code>defaults.segment</code> works the same way but one level only (<code>defaults.segment</code> &rarr; the segment
+row's own fields - segments don't have named presets).</p>
+<p class="note">A new config already starts with two starter presets (<code>ct_soft_tissue</code>, <code>ct_bone</code>) -
+edit or delete them freely. "Show example presets..." has a much bigger catalogue (CT/MRI/PET windows, colored
+overlays) to copy from, plus an "Insert ALL" button.</p>
+
+<a name="manual-edit-config"></a>
+<h2>&#128190; Manual edit config</h2>
+<ul>
+<li><b>Refresh from form</b> - regenerates the JSON box from every other tab's current state. This is exactly the JSON <b>Save config</b> would write - a live "what am I actually about to save" preview.</li>
+<li><b>Apply to form</b> - the reverse: parses whatever JSON is in the box and pushes it into every other tab (like Load from file, but from this text instead of disk). Handy for pasting in a config someone sent you in chat, or for a quick hand-edit of something with no dedicated field yet.</li>
+<li><b>Save always saves from the tabs</b> - if you hand-edit the JSON here, click Apply first, or your edits won't make it into the saved file.</li>
+</ul>
+<p class="note">Tip: select any text above (Ctrl+A / Ctrl+C) to copy it.</p>
+
+<a name="key-reference"></a>
+<h2>&#128273; Key reference</h2>
+<p class="note">Every named constant/parameter used above, in one place - what it's called, where you set it, and what it actually does.</p>
+<table class="ref">
+<tr><th>Name</th><th>Where</th><th>Function</th></tr>
+<tr><td><code>study_dir</code></td><td>General &rarr; Study dir</td><td>Root every relative path in the config resolves against. Empty -> the preseg CSV's own folder.</td></tr>
+<tr><td><code>key_columns</code></td><td>General &rarr; Key columns</td><td>Composite specimen ID (e.g. <code>ID</code> or <code>ID,measurement</code>) - must exist, with matching values, in both <code>database.csv</code> and <code>preseg.csv</code>.</td></tr>
+<tr><td><code>status_column</code></td><td>General &rarr; Status column</td><td><code>database.csv</code> column holding each specimen's status as an integer: <code>0</code> untouched, <code>1</code> in progress, <code>2</code> to review, <code>3</code> finished (created if missing). The column can have any name (e.g. <code>done</code>); the table always shows it as the last column, headed <code>Status</code>, as a dropdown that colors the row (not optional, no need to list it in <code>table_columns</code>). Batch Export processes only <code>3</code>. <code>1</code> is set automatically when a specimen loads from its own saved file or is saved; <code>2</code>/<code>3</code> are set manually (dropdown or the Close dialog).</td></tr>
+<tr><td><code>table_columns</code></td><td>General &rarr; Table columns</td><td>Which <code>database.csv</code> columns are shown/editable in the main module's specimen table.</td></tr>
+<tr><td><code>output_dir_pattern</code> (top-level)</td><td>General &rarr; Output dir pattern</td><td>Per-specimen output folder for <b>interactive</b> work (segmentation/markups/saved images). Independent of Batch export's own root dir/patterns below.</td></tr>
+<tr><td><code>group_by_key.column</code></td><td>General &rarr; Group specimens by key</td><td>Database column used to populate the main module's group-select combo. Viewing convenience only - has no effect on Batch export.</td></tr>
+<tr><td><code>status_filter.enabled</code></td><td>General &rarr; Filtering &rarr; Filter by status</td><td>Show the main module's Status filter (a checklist of the four statuses above the table). On by default. Viewing convenience only - Batch export ignores it.</td></tr>
+<tr><td><code>auto_save_database</code></td><td>General &rarr; Auto-save database</td><td>On = <code>database.csv</code> is written to disk after every table edit, and the manual "Save database CSV" button is hidden. Default off.</td></tr>
+<tr><td><code>factor_columns</code></td><td>General &rarr; Factor columns</td><td>Which <code>database.csv</code> columns render as a checkbox (<code>binary</code>) or a level dropdown (<code>multilevel</code>) in the main module's specimen table, instead of free text. Only takes effect for columns also listed in <code>table_columns</code>.</td></tr>
+<tr><td><code>batch_export.output_dir</code></td><td>Batch export &rarr; Batch export root dir</td><td>The root every batch pattern below is anchored to (segment/markup files, and any relative Segment export/Report/Markup summary pattern). Empty -> <code>study_dir</code>.</td></tr>
+<tr><td><code>batch_export.output_dir_pattern</code></td><td>Batch export &rarr; Segment export pattern</td><td>Per-specimen subfolder, joined onto the batch root dir - governs segment + markup FILE export only.</td></tr>
+<tr><td><code>batch_export.segments_filter</code></td><td>Segment export settings &rarr; Segments filter</td><td>Which segments get exported to a labelmap file. Independent of <code>stats_segments_filter</code>.</td></tr>
+<tr><td><code>batch_export.stats_segments_filter</code></td><td>Segment statistics settings &rarr; Segments filter</td><td>Which segments get a statistics row. Independent of <code>segments_filter</code> - a segment can be in one, both, or neither.</td></tr>
+<tr><td><code>batch_export.stats_output_path</code></td><td>Segment statistics settings &rarr; Report pattern</td><td>Statistics CSV path, anchored directly to the batch root dir (never nested through the Segment export pattern). Defaults to <code>report.csv</code>.</td></tr>
+<tr><td><code>batch_export.markups_output_path</code></td><td>Markup summary settings &rarr; Markup summary pattern</td><td>Combined markup-summary CSV path, same anchoring rule as the Report pattern. Defaults to <code>markups_report.csv</code>.</td></tr>
+<tr><td><code>batch_export.markups_coordinate_system</code></td><td>Markup summary settings &rarr; Markup CSV coordinate encoding</td><td>RAS (default) or LPS - which convention the x/y/z values in the per-specimen markups CSV and the combined summary CSV use. Does not affect the <code>.mrk.json</code> file itself.</td></tr>
+<tr><td><code>{column}</code></td><td>Any path-pattern field</td><td>Any key/<code>database.csv</code>/<code>preseg.csv</code> column name in curly braces - substituted with that specimen's value.</td></tr>
+<tr><td><code>{date}</code> / <code>{time}</code> / <code>{datetime}</code></td><td>Report pattern, Markup summary pattern</td><td>Current date/time, substituted once per batch run (<code>YYYY-MM-DD</code> / <code>HH-MM-SS</code> / combined).</td></tr>
+<tr><td><code>{index}</code></td><td>Report pattern, Markup summary pattern</td><td>Only when present: a two-digit, <code>_01</code>-based counter inserted before the file extension, picking the lowest suffix not already on disk - so a previous run's file is never overwritten. Absent -> existing file is overwritten as usual.</td></tr>
+</table>

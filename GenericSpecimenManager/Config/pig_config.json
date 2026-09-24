@@ -4,7 +4,7 @@
   "preseg_csv_path": "/nas/medicopus_share/Projects/ANIMALS/HARIBO/segmentation_2/etc/img_paths.csv",
 
   "key_columns": ["ID", "measurement"],
-  "table_columns": ["ID", "measurement", "done"],
+  "table_columns": ["ID", "measurement", "status"],
   "output_dir_pattern": ["ID", "measurement"],
 
   "defaults": {

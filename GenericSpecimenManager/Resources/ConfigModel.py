@@ -6,11 +6,11 @@ Typed, attribute-accessed representation of a study config.json - the
 dataclass counterpart to the raw dict the JSON parses into. Nothing in
 GenericSpecimenEngine.py should need to reach into a plain dict with
 `.get("x", {}).get("y", [])` chains anymore; it reads `cfg.segmentation.segments`,
-`cfg.landmarks.enabled`, etc.
+`cfg.markups.enabled`, etc.
 
 Two kinds of dataclasses live here:
 
-1. "Section" dataclasses (StudyConfig, SegmentationConfig, LandmarksConfig,
+1. "Section" dataclasses (StudyConfig, SegmentationConfig, MarkupsConfig,
    GlobalWindowLevelConfig, BatchExportConfig,
    SegmentEditorConfig, BrushConfig, DefaultsConfig) - one meaning, one
    place in the schema, built once from the raw dict at load time.
@@ -204,8 +204,8 @@ class SegmentationConfig:
 
 
 @dataclass
-class LandmarksConfig:
-    """cfg.landmarks - whether/how to load or create each specimen's markups (fiducial) file."""
+class MarkupsConfig:
+    """cfg.markups - whether/how to load or create each specimen's markups (fiducial) file."""
     enabled: bool = False
     csv_column: Optional[str] = None
     path_pattern: Optional[str] = None
@@ -215,7 +215,7 @@ class LandmarksConfig:
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):
-        """Build LandmarksConfig from the config's 'landmarks' block."""
+        """Build MarkupsConfig from the config's 'markups' block."""
         return _from_dict(cls, d or {})
 
 
@@ -309,6 +309,10 @@ class WorkspaceConfig:
     # or "neurological" (patient's right on screen-right). Unset = leave
     # Slicer's current slice orientation presets alone.
     view_convention: Optional[str] = None
+    # Show the ACTIVE specimen's database row (ID from the key columns, then one "column: value"
+    # line per remaining table_columns entry) as yellow text in the top-left of the slice + 3D
+    # views while it's loaded. Default off.
+    specimen_annotation: Optional[bool] = None
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):
@@ -319,7 +323,7 @@ class WorkspaceConfig:
 @dataclass
 class BatchExportConfig:
     """cfg.batch_export - what BatchProcessor (GenericSpecimenEngine.py) does
-    with every 'done' specimen, in ONE pass: export segment labelmaps to
+    with every 'finished' specimen, in ONE pass: export segment labelmaps to
     files, export markups, and/or compute custom per-segment statistics
     into one or more CSVs - any combination. Whichever of these is turned
     on decides what gets loaded per specimen (a lean load, skipping
@@ -336,8 +340,10 @@ class BatchExportConfig:
     # decoded from one shared multi-label array).
     compute_stats: bool = False
     reference_image: Optional[str] = None
-    # Affects segment file export, markup file export, AND which segments
-    # get stats rows - the one field genuinely shared across everything.
+    # Which segments get exported to their own labelmap file when
+    # export_segments is on. Independent of stats_segments_filter below -
+    # a segment can be exported without being included in the statistics,
+    # or vice versa.
     segments_filter: Optional[List[str]] = None
     # Governs SEGMENT and MARKUP export only (not statistics - see
     # stats_output_path below, which shares this same root but is never
@@ -360,43 +366,68 @@ class BatchExportConfig:
     # segment labelmap's geometry (same grid) - a mismatched one is
     # skipped with a warning, not silently misread.
     stats_reference_images: Optional[List[str]] = None
+    # Which segments get a statistics row when compute_stats is on -
+    # same "name must match exactly" logic as segments_filter above, but
+    # independent of it: a segment can be included in the statistics
+    # without being exported to a labelmap file, or vice versa.
+    stats_segments_filter: Optional[List[str]] = None
     # Comma-separated in the Config Editor; each entry is volume/min/max/
     # mean/median/std or percentile_<N> (e.g. percentile_25). Unset/empty
     # falls back to Definitions.DEFAULT_STATS_METRICS.
     stats_metrics: Optional[List[str]] = None
     # The "batch segment statistics pattern": a curly-brace pattern (same
     # {column} mechanism as output_dir_pattern above, plus "{date}"/
-    # "{time}"/"{datetime}") resolved PER SPECIMEN. Defaults to
-    # "report.csv". If the result is a relative path, it's anchored to
-    # output_dir above (the SAME shared root segment/markup files use) -
-    # or to study_dir directly if output_dir itself is unset - but,
-    # unlike segment/markup files, this is NEVER nested through
-    # output_dir_pattern; it's its own separate path straight under that
-    # root. Grouping is automatic and needs no separate flag: specimens
-    # that resolve to the SAME final path share one CSV;
-    # if the pattern references a column that varies (e.g. "{batch}/
-    # report.csv"), specimens with different values naturally end up in
-    # separate files instead.
+    # "{time}"/"{datetime}"/"{index}" - see BatchProcessor._resolve_pattern_path())
+    # resolved PER SPECIMEN. Defaults to "report.csv". If the result is a
+    # relative path, it's anchored to output_dir above (the SAME shared
+    # root segment/markup files use) - or to study_dir directly if
+    # output_dir itself is unset - but, unlike segment/markup files, this
+    # is NEVER nested through output_dir_pattern; it's its own separate
+    # path straight under that root. Grouping is automatic and needs no
+    # separate flag: specimens that resolve to the SAME final path share
+    # one CSV; if the pattern references a column that varies (e.g.
+    # "{batch}/report.csv"), specimens with different values naturally
+    # end up in separate files instead.
     stats_output_path: Optional[str] = None
-    # Combines every specimen's landmark points into one or more CSVs -
-    # one row per landmark (identified by its label), key columns
+    # Combines every specimen's markup points into one or more CSVs - one
+    # row per markup point (identified by its label), key columns
     # prepended, same grouping-by-resolved-path mechanism as
-    # stats_output_path (see landmarks_output_path below). Only
-    # meaningful together with export_markups (that's what actually
-    # loads the markups node this reads from). A PER-SPECIMEN landmarks
-    # CSV is written automatically whenever export_markups is on,
-    # regardless of this flag - this only controls the additional,
-    # combined multi-specimen report.
-    landmarks_report: bool = False
-    # The "landmarks report pattern" - same {column}/{date}/{time}/
-    # {datetime} mechanism and same root-anchoring as stats_output_path
-    # (batch_export.output_dir if set, else study_dir; never nested
-    # through output_dir_pattern). Defaults to "landmarks_report.csv".
-    landmarks_output_path: Optional[str] = None
+    # stats_output_path (see markups_output_path below). Only meaningful
+    # together with export_markups (that's what actually loads the
+    # markups node this reads from). A PER-SPECIMEN markups CSV is
+    # written automatically whenever export_markups is on, regardless of
+    # this flag - this only controls the additional, combined
+    # multi-specimen report.
+    # Coordinate convention for the per-specimen markups CSV and the combined markup summary CSV
+    # (the .mrk.json file itself is untouched - it keeps Slicer's own coordinateSystem field).
+    # "RAS" (default) writes GetNthControlPointPositionWorld()'s value as-is; "LPS" flips x and y
+    # (LPS = (-x, -y, z) relative to RAS) - useful when the CSV feeds an ITK/DICOM-based pipeline
+    # that expects LPS.
+    markups_coordinate_system: Optional[str] = None
+    markups_report: bool = False
+    # The "markup summary pattern" - same {column}/{date}/{time}/
+    # {datetime}/{index} mechanism and same root-anchoring as
+    # stats_output_path (batch_export.output_dir if set, else study_dir;
+    # never nested through output_dir_pattern). Defaults to
+    # "markups_report.csv".
+    markups_output_path: Optional[str] = None
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):
         """Build BatchExportConfig from the config's 'batch_export' block."""
+        return _from_dict(cls, d or {})
+
+
+@dataclass
+class StatusFilterConfig:
+    """Whether the main module shows its Status filter (a checklist of the four
+    specimen statuses above the table). A viewing convenience only - Batch export
+    ignores it. On by default."""
+    enabled: bool = True
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]):
+        """Build StatusFilterConfig from the config's 'status_filter' block."""
         return _from_dict(cls, d or {})
 
 
@@ -407,7 +438,7 @@ class GroupByKeyConfig:
     the GUI shows a group-select combo box after Initialize Study,
     re-filtering the specimen table to the selected value. This is
     purely a viewing convenience - batch_export's own output_dir_pattern/
-    stats_output_path/landmarks_output_path can reference any database.csv
+    stats_output_path/markups_output_path can reference any database.csv
     column directly (including this one, by name), with no dependency on
     this section at all."""
     enabled: bool = False
@@ -417,6 +448,30 @@ class GroupByKeyConfig:
     def from_dict(cls, d: Optional[dict]):
         """Build GroupByKeyConfig from the config's 'group_by_key' block."""
         return _from_dict(cls, d or {})
+
+
+@dataclass
+class FactorColumnConfig:
+    """One database.csv column the main module's specimen table renders as a categorical factor
+    instead of free text - "binary" (a checkbox, 0/1, same mechanism as any checkbox column) or
+    "multilevel" (a dropdown restricted to `levels`). Either way the value written back to the
+    CSV is always plain text (the level string itself, or "0"/"1") - never a numeric index - so
+    the file stays directly readable/editable by anything else that opens it. Purely a main-module
+    table-editing convenience; independent of table_columns (a factor column only renders
+    specially if it's ALSO listed in table_columns - this section doesn't imply visibility)."""
+    column: str = ""
+    type: str = "binary"                     # "binary" | "multilevel"
+    levels: List[str] = field(default_factory=list)   # multilevel only; ignored for binary
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]):
+        """Build one FactorColumnConfig from a factor_columns[] entry."""
+        d = d or {}
+        return cls(
+            column=d.get("column", ""),
+            type=d.get("type", "binary") or "binary",
+            levels=list(d.get("levels") or []),
+        )
 
 
 @dataclass
@@ -465,7 +520,7 @@ class StudyConfig:
     database_csv_path: str = ""
     preseg_csv_path: str = ""
     key_columns: List[str] = field(default_factory=lambda: ["ID"])
-    done_column: str = "done"
+    status_column: str = "status"
     table_columns: List[str] = field(default_factory=list)
     # Where a specimen's own files (segmentation, markups, and any image
     # explicitly saved) live for INTERACTIVE work - resolved per specimen
@@ -483,29 +538,35 @@ class StudyConfig:
     images: List[ImageConfig] = field(default_factory=list)
 
     segmentation: SegmentationConfig = field(default_factory=SegmentationConfig)
-    landmarks: LandmarksConfig = field(default_factory=LandmarksConfig)
+    markups: MarkupsConfig = field(default_factory=MarkupsConfig)
     volume_rendering: List[VolumeRenderingEntry] = field(default_factory=list)
     window_level: GlobalWindowLevelConfig = field(default_factory=GlobalWindowLevelConfig)
     slice_rotation: SliceRotationConfig = field(default_factory=SliceRotationConfig)
     workspace: WorkspaceConfig = field(default_factory=WorkspaceConfig)
     batch_export: BatchExportConfig = field(default_factory=BatchExportConfig)
     segment_editor: SegmentEditorConfig = field(default_factory=SegmentEditorConfig)
+    # Initial state of the main module's "Auto-save database" checkbox (write database.csv to
+    # disk after every edit). Only the STARTING value - toggling the checkbox at runtime does not
+    # write back to the config.
+    auto_save_database: bool = False
     group_by_key: GroupByKeyConfig = field(default_factory=GroupByKeyConfig)
+    status_filter: StatusFilterConfig = field(default_factory=StatusFilterConfig)
+    factor_columns: List[FactorColumnConfig] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, raw: Optional[dict], base_dir: str = "."):
         """Parse a whole raw config dict into a StudyConfig, building every nested section and override collection in one place. base_dir is the config file's own folder, used as the default study_dir when the config doesn't set one explicitly."""
         raw = dict(raw or {})
         key_columns = raw.get("key_columns", ["ID"])
-        done_column = raw.get("done_column", "done")
+        status_column = raw.get("status_column", "status")
 
         return cls(
             study_dir=raw.get("study_dir", base_dir),
             database_csv_path=raw.get("database_csv_path", ""),
             preseg_csv_path=raw.get("preseg_csv_path", ""),
             key_columns=list(key_columns),
-            done_column=done_column,
-            table_columns=list(raw.get("table_columns", list(key_columns) + [done_column])),
+            status_column=status_column,
+            table_columns=list(raw.get("table_columns", list(key_columns) + [status_column])),
             output_dir_pattern=raw.get("output_dir_pattern") or "/".join(f"{{{k}}}" for k in key_columns),
 
             defaults=DefaultsConfig.from_dict(raw.get("defaults")),
@@ -513,14 +574,17 @@ class StudyConfig:
             images=[ImageConfig.from_dict(d) for d in raw.get("images", [])],
 
             segmentation=SegmentationConfig.from_dict(raw.get("segmentation")),
-            landmarks=LandmarksConfig.from_dict(raw.get("landmarks")),
+            markups=MarkupsConfig.from_dict(raw.get("markups")),
             volume_rendering=[VolumeRenderingEntry.from_dict(d) for d in (raw.get("volume_rendering") or [])],
             window_level=GlobalWindowLevelConfig.from_dict(raw.get("window_level")),
             slice_rotation=SliceRotationConfig.from_dict(raw.get("slice_rotation")),
             workspace=WorkspaceConfig.from_dict(raw.get("workspace")),
             batch_export=BatchExportConfig.from_dict(raw.get("batch_export")),
             segment_editor=SegmentEditorConfig.from_dict(raw.get("segment_editor")),
+            auto_save_database=bool(raw.get("auto_save_database", False)),
             group_by_key=GroupByKeyConfig.from_dict(raw.get("group_by_key")),
+            status_filter=StatusFilterConfig.from_dict(raw.get("status_filter")),
+            factor_columns=[FactorColumnConfig.from_dict(d) for d in (raw.get("factor_columns") or [])],
         )
 
 

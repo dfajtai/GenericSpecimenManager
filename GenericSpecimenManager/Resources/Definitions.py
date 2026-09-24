@@ -11,11 +11,56 @@ it's genuinely logging-specific machinery, not a plain on/off switch, so it
 stays next to the handler setup it configures.
 """
 
+from enum import IntEnum
+
 # ---- Developer-UI visibility (GenericSpecimenManagerWidgetBase) ----
 # Flip either to False to show that section again. See GenericSpecimenEngine.py's
 # setup()/enter()/exit() for where these are actually applied.
-HIDE_RELOAD_AND_TEST = False
+HIDE_RELOAD_AND_TEST = True
 HIDE_HELP_AND_ACKNOWLEDGEMENT = True
+
+# ---- Main module GUI (GenericSpecimenManagerWidgetBase) ----
+# The specimen table sizes itself to exactly fit its current row count (no
+# empty space with few specimens/after a Group filter) up to this many rows -
+# beyond that it stays fixed at that height and scrolls instead of pushing
+# the rest of the panel down. See _fitSpecimenTableHeight().
+SPECIMEN_TABLE_MAX_VISIBLE_ROWS = 12
+# The table also never grows taller than the space left in the module panel
+# (so the WHOLE module doesn't become scrollable) - but never shrinks below
+# this many rows either, however cramped the panel is.
+SPECIMEN_TABLE_MIN_VISIBLE_ROWS = 3
+
+# ---- Specimen annotation (workspace.specimen_annotation) text in the views ----
+SPECIMEN_ANNOTATION_FONT_SIZE = 11
+SPECIMEN_ANNOTATION_COLOR = (1.0, 1.0, 0.0)      # text color, yellow
+SPECIMEN_ANNOTATION_BG_COLOR = (0.5, 0.5, 0.5)   # gray
+SPECIMEN_ANNOTATION_BG_OPACITY = 0.2             # 0 = fully transparent, 1 = opaque
+SPECIMEN_ANNOTATION_BG_PADDING = 6               # pixels between the text and the edge of the background
+
+# ---- Specimen status (the config's status_column in database.csv) ----
+# Stored in the CSV as the plain integer value. Empty/unknown -> UNTOUCHED.
+class SpecimenStatus(IntEnum):
+    UNTOUCHED = 0      # never loaded with data / closed without changes
+    IN_PROGRESS = 1    # loaded from its own saved file, or saved at least once
+    TO_REVIEW = 2      # marked manually
+    FINISHED = 3       # marked manually ("mark as finished"); what Batch export processes
+
+
+SPECIMEN_STATUS_LABELS = {
+    SpecimenStatus.UNTOUCHED: "untouched",
+    SpecimenStatus.IN_PROGRESS: "in progress",
+    SpecimenStatus.TO_REVIEW: "to review",
+    SpecimenStatus.FINISHED: "finished",
+}
+
+# Specimen table row background per status (r, g, b): white / light blue / pale yellow / darker pastel green.
+SPECIMEN_STATUS_COLORS = {
+    SpecimenStatus.UNTOUCHED: (255, 255, 255),
+    SpecimenStatus.IN_PROGRESS: (205, 228, 250),
+    SpecimenStatus.TO_REVIEW: (255, 248, 200),
+    SpecimenStatus.FINISHED: (150, 205, 150),
+}
+
 
 # ---- Specimen save behavior (GenericSpecimen) ----
 # When True (default), a loaded image (volume/labelmap) is only written back
