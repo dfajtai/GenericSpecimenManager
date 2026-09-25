@@ -1,0 +1,18 @@
+{
+  "database_csv_path": "database.csv",
+  "preseg_csv_path": "preseg.csv",
+  "key_columns": ["ID"],
+
+  "images": [
+    { "name": "ct", "csv_column": "ct", "role": "background", "required": true },
+    { "name": "pet", "csv_column": "pet", "role": "foreground", "opacity": 0.5 }
+  ],
+
+  "segmentation": {
+    "enabled": true,
+    "reference_image": "ct",
+    "segments": [
+      { "name": "lesion", "source": "empty" }
+    ]
+  }
+}

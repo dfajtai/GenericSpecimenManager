@@ -41,10 +41,9 @@ on every specimen is loaded, saved and exported the same way, every time.
 | folder | what is in it |
 |---|---|
 | [`GenericSpecimenManager/`](GenericSpecimenManager) | the Slicer extension - start with its [README](GenericSpecimenManager/README.md) |
-| [`docs/`](docs) | reference documentation: config schema, Config Editor, batch export, architecture, design notes |
+| [`docs/`](docs) | reference documentation: config schema, Config Editor, batch export, architecture, Segment Editor notes |
 | [`howto/`](howto) | step-by-step guides, e.g. [your first study](howto/first-study.md) |
 | [`examples/config/`](examples/config) | ready-made study configs to start from |
-| [`CHANGELOG.md`](CHANGELOG.md) | what changed, newest first |
 
 ## Quick start
 
@@ -60,10 +59,26 @@ Full walk-through: [Your first study](howto/first-study.md).
 
 ## Documentation
 
-- [Your first study](howto/first-study.md) · [Setting up a new study](howto/new-study.md)
-- [Config reference](docs/config-reference.md) · [Config Editor](docs/config-editor.md)
-- [The main module](docs/main-module.md) · [Batch export](docs/batch-export.md) · [Volume rendering](docs/volume-rendering.md)
-- [Data safety](docs/data-safety.md) · [Architecture](docs/architecture.md) · [Design notes](docs/design-notes.md) · [Roadmap](docs/roadmap.md)
+### For users
+
+| I want to... | read |
+|---|---|
+| set up my first study, step by step | [Your first study](howto/first-study.md) |
+| start a new study or species | [Setting up a new study](howto/new-study.md) |
+| build a config with the guided editor | [Config Editor](docs/config-editor.md) |
+| look up a config key | [Config reference](docs/config-reference.md) |
+| understand the module window: specimens, statuses, filters, reset | [The main module](docs/main-module.md) |
+| export segments, statistics and markups | [Batch export](docs/batch-export.md) |
+
+### For developers
+
+| I want to... | read |
+|---|---|
+| find my way around the code, run the tests | [Architecture](docs/architecture.md) |
+| know how the study's files are protected | [Data safety](docs/data-safety.md) |
+| see why the Segment Editor integration looks the way it does | [Segment Editor design notes](docs/segment-editor-design-notes.md) |
+| see how the volume rendering shift works | [Volume rendering notes](docs/volume-rendering.md) |
+| see what is planned, or what changed | [Roadmap](docs/roadmap.md), [Changelog](CHANGELOG.md) |
 
 ## License
 

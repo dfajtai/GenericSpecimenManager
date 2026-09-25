@@ -1,0 +1,28 @@
+{
+  "study_dir": "data",
+  "database_csv_path": "database.csv",
+  "preseg_csv_path": "preseg.csv",
+  "key_columns": ["ID"],
+  "output_dir_pattern": "results/{ID}",
+
+  "defaults": {
+    "image": { "path_pattern": "images/{ID}_{name}.nii.gz" }
+  },
+
+  "images": [
+    { "name": "t1", "role": "background", "required": true },
+    { "name": "t2" },
+    { "name": "adc" }
+  ],
+
+  "segmentation": {
+    "enabled": true,
+    "reference_image": "t1",
+    "path_pattern": "segmentations/{ID}_{segment_name}.nii.gz",
+    "segments": [
+      { "name": "liver" },
+      { "name": "spleen" },
+      { "name": "lesion", "source": "empty" }
+    ]
+  }
+}

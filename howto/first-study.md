@@ -30,7 +30,7 @@ See *Quick start* in the [repository README](../README.md): add
 ## 3. Create the config
 
 1. Open *Segmentation → Generic Specimen Manager* and press **Config Editor...** → *Open clean Config Editor*
-   (or start from a file in [`examples/config/`](../examples/config), e.g. `config_example_pig.json`, and adjust it).
+   (or start from a file in [`examples/config/`](../examples/config), e.g. `example_minimal.json`, and adjust it).
 2. **General** tab: pick the preseg CSV and the database CSV, use **Show CSV columns...** to see the column names, set
    the **Key columns**, and choose which **Table columns** the specimen table should show.
 3. **Images** tab: add one row per image - *Quick add from preseg columns...* offers the preseg columns in a popup - and mark one as the `background`.

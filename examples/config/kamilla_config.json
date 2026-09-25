@@ -2,33 +2,15 @@
   "study_dir": "/nas/medicopus_share/Projects/kamilla_maj/slicer_data_source",
   "database_csv_path": "etc/database.csv",
   "preseg_csv_path": "etc/img_paths.csv",
-  "key_columns": [
-    "software",
-    "accession"
-  ],
+  "key_columns": ["software", "accession"],
   "status_column": "status",
-  "table_columns": [
-    "software",
-    "accession",
-    "Comment",
-    "asdasd"
-  ],
+  "table_columns": ["software", "accession", "Comment"],
   "output_dir_pattern": "segmentations/{software}/{accession}",
   "auto_save_database": true,
   "group_by_key": {
     "enabled": true,
     "column": "software"
   },
-  "factor_columns": [
-    {
-      "column": "asdasd",
-      "type": "multilevel",
-      "levels": [
-        "123",
-        "312"
-      ]
-    }
-  ],
   "images": [
     {
       "name": "native",
@@ -75,56 +57,32 @@
       {
         "name": "liver",
         "source": "empty",
-        "color": [
-          0.8,
-          0.35,
-          0.35
-        ]
+        "color": [0.8, 0.35, 0.35]
       },
       {
         "name": "gallbladder",
         "source": "empty",
-        "color": [
-          0.2,
-          0.7,
-          0.3
-        ]
+        "color": [0.2, 0.7, 0.3]
       },
       {
         "name": "lesion",
         "source": "empty",
-        "color": [
-          0.95,
-          0.85,
-          0.2
-        ]
+        "color": [0.95, 0.85, 0.2]
       },
       {
         "name": "portal_vena",
         "source": "empty",
-        "color": [
-          0.2,
-          0.5,
-          0.85
-        ]
+        "color": [0.2, 0.5, 0.85]
       },
       {
         "name": "aorte",
         "source": "empty",
-        "color": [
-          0.9,
-          0.15,
-          0.15
-        ]
+        "color": [0.9, 0.15, 0.15]
       },
       {
         "name": "background",
         "source": "empty",
-        "color": [
-          1.0,
-          0.412,
-          0.706
-        ]
+        "color": [1.0, 0.412, 0.706]
       }
     ]
   },
@@ -154,36 +112,11 @@
     "compute_stats": true,
     "markups_report": false,
     "reference_image": "native",
-    "segments_filter": [
-      "liver",
-      "gallbladder",
-      "lesion",
-      "portal_vena",
-      "aorte",
-      "background"
-    ],
-    "output_dir": "/home/fajtai/New Folder/",
+    "segments_filter": ["liver", "gallbladder", "lesion", "portal_vena", "aorte", "background"],
+    "output_dir": "export",
     "output_dir_pattern": "{software}/{accession}",
-    "stats_reference_images": [
-      "native",
-      "water",
-      "arterial",
-      "portal",
-      "equlibrium",
-      "last_image"
-    ],
-    "stats_metrics": [
-      "volume",
-      "min",
-      "max",
-      "mean",
-      "median",
-      "std",
-      "percentile_5",
-      "percentile_25",
-      "percentile_75",
-      "percentile_95"
-    ],
+    "stats_reference_images": ["native", "water", "arterial", "portal", "equlibrium", "last_image"],
+    "stats_metrics": ["volume", "min", "max", "mean", "median", "std", "percentile_5", "percentile_25", "percentile_75", "percentile_95"],
     "stats_output_path": "reports/{date}/report-{time}.csv"
   },
   "segment_editor": {

@@ -1,0 +1,59 @@
+{
+  "database_csv_path": "database.csv",
+  "preseg_csv_path": "preseg.csv",
+  "key_columns": ["ID"],
+
+  "images": [
+    { "name": "ct", "csv_column": "ct", "role": "background", "required": true,
+      "window_level": { "min": -150, "max": 700 } }
+  ],
+
+  "segmentation": {
+    "enabled": true,
+    "reference_image": "ct",
+    "segments": [
+      { "name": "bone", "source": "empty" },
+      { "name": "soft_tissue", "source": "empty" }
+    ]
+  },
+
+  "markups": {
+    "enabled": true,
+    "path_pattern": "{label}-landmarks.mrk.json",
+    "template_path": "templates/landmarks.mrk.json",
+    "color": [1.0, 0.2, 0.2],
+    "size": 4,
+    "size_absolute": true,
+    "glyph_type": "Sphere3D"
+  },
+
+  "workspace": {
+    "view_convention": "radiological",
+    "ruler_type": "Thin",
+    "orientation_marker_3d_type": "Axes",
+    "orientation_marker_3d_size": "Medium",
+    "orientation_marker_2d_type": "Axes",
+    "orientation_marker_2d_size": "Small",
+    "specimen_annotation": true
+  },
+
+  "batch_export": {
+    "enabled": true,
+    "output_dir": "batch_export",
+    "output_dir_pattern": "{ID}",
+    "reference_image": "ct",
+
+    "export_segments": true,
+    "segments_filter": ["bone", "soft_tissue"],
+
+    "compute_stats": true,
+    "stats_reference_images": ["ct"],
+    "stats_metrics": ["volume", "mean", "std", "percentile_5", "percentile_95"],
+    "stats_output_path": "reports/stats-{date}-{index}.csv",
+
+    "export_markups": true,
+    "markups_report": true,
+    "markups_output_path": "reports/landmarks-{date}.csv",
+    "markups_coordinate_system": "LPS"
+  }
+}

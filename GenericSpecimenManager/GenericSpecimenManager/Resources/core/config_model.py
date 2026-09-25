@@ -227,7 +227,7 @@ class VolumeRenderingEntry:
     spacing - the classic "Shift" slider behavior), or window_level
     (min/max or window/level, same forms as ImageConfig.window_level - a
     full rescale into a target range). If both are set, offset wins (see
-    GenericSpecimen._apply_volume_rendering_shift)."""
+    utils/volume_rendering.py apply_volume_rendering_shift)."""
     image: Optional[str] = None
     enabled: Optional[bool] = None
     preset: Optional[str] = None

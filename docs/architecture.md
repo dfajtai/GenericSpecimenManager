@@ -173,6 +173,7 @@ Automated tests need no Slicer: `python -m unittest discover -s tests` from the 
 - `test_utils.py` - the pure logic inside `utils/` (Segment Editor attributes, transfer-function shift/remap), with Slicer stubbed.
 - `test_layers.py` - the layer rule above holds (no upward imports; `core/` imports no Slicer/Qt/VTK).
 - `test_agent_notes.py` - the files `CLAUDE.md` mentions exist, and `AGENTS.md` is an identical copy of it.
+- `test_example_configs.py` - every config in `examples/config` parses and uses only keys the schema knows.
 - `test_packaging.py` - every file under `Resources/` is listed in the module's `CMakeLists.txt`.
 
 `core/` is pure Python on purpose, so new logic that doesn't need Slicer belongs there, where it can be tested.

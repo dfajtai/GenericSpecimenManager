@@ -9,10 +9,10 @@ Reference documentation for GenericSpecimenManager. New here? Start with the
 | [Config Editor](config-editor.md) | the guided editor, tab by tab, and how its content can be extended without code |
 | [The main module](main-module.md) | the module layout, specimen status, filters, reset, error handling |
 | [Batch export](batch-export.md) | segment export, statistics, markup summary, filename patterns |
-| [Volume rendering](volume-rendering.md) | the per-image volume rendering settings |
 | [Data safety](data-safety.md) | atomic writes, backups, change detection and the study lock |
 | [Architecture](architecture.md) | repository layout, file responsibilities, config model, logging, development rules |
-| [Design notes](design-notes.md) | why the Segment Editor integration looks the way it does |
+| [Segment Editor design notes](segment-editor-design-notes.md) | why the Segment Editor integration looks the way it does |
+| [Volume rendering notes](volume-rendering.md) | technical notes: how the preset shift/remap works and why (the settings themselves are in the [Config reference](config-reference.md)) |
 | [Roadmap](roadmap.md) | what is planned |
 
 Step-by-step guides live in [`../howto/`](../howto).

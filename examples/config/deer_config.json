@@ -4,7 +4,7 @@
   "preseg_csv_path": "etc/preseg_paths.csv",
 
   "key_columns": ["sid"],
-  "table_columns": ["sid", "group", "status"],
+  "table_columns": ["sid", "group"],
   "output_dir_pattern": "{sid}/{slicer_seg}",
 
   "presets": {

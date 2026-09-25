@@ -1,4 +1,4 @@
-# Design notes: Segment Editor integration
+# Segment Editor design notes
 
 The story of how the Segment Editor integration ended up the way it is - kept as a record of what did **not** work.
 

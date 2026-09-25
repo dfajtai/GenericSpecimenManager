@@ -1,0 +1,40 @@
+{
+  "study_dir": "study",
+  "database_csv_path": "etc/database.csv",
+  "preseg_csv_path": "etc/preseg.csv",
+  "key_columns": ["site", "ID"],
+  "status_column": "review_status",
+  "table_columns": ["site", "ID", "artifact", "quality", "comment"],
+  "output_dir_pattern": "annotations/{site}/{ID}",
+  "auto_save_database": true,
+
+  "group_by_key": { "enabled": true, "column": "site" },
+
+  "factor_columns": [
+    { "column": "artifact", "type": "binary" },
+    { "column": "quality", "type": "multilevel", "levels": ["good", "fair", "poor"] }
+  ],
+
+  "images": [
+    { "name": "mri", "csv_column": "mri", "role": "background", "required": true }
+  ],
+
+  "segmentation": {
+    "enabled": true,
+    "reference_image": "mri",
+    "path_pattern": "auto_segmentations/{site}/{ID}/{segment_name}.nii.gz",
+    "segments": [
+      { "name": "liver", "color": [0.8, 0.35, 0.35] },
+      { "name": "spleen", "color": [0.2, 0.5, 0.85] },
+      { "name": "lesion", "source": "empty", "color": [0.95, 0.85, 0.2] }
+    ]
+  },
+
+  "workspace": { "specimen_annotation": true },
+
+  "segment_editor": {
+    "overwrite_mode": "visible_segments",
+    "brush": { "shape": "sphere", "diameter_mm": 10 },
+    "active_effect": "Paint"
+  }
+}
