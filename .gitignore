@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# GenericSpecimenManager data-safety files (see docs/data-safety.md)
+.backups/
+*.prev
+.*.lock
+.tmp-*
+
+.claude

@@ -4,12 +4,13 @@ project(GenericSpecimenManager)
 
 #-----------------------------------------------------------------------------
 # Extension meta-information
-set(EXTENSION_HOMEPAGE "https://www.slicer.org/wiki/Documentation/Nightly/Extensions/GenericSpecimenManager")
+set(EXTENSION_HOMEPAGE "https://github.com/dfajtai/GenericSpecimenManager")
 set(EXTENSION_CATEGORY "Segmentation")
 set(EXTENSION_CONTRIBUTORS "Daniel Fajtai (-)")
-set(EXTENSION_DESCRIPTION "This is a simple extension to handle generic specimens of various projects.")
-set(EXTENSION_ICONURL "https://www.example.com/Slicer/Extensions/GenericSpecimenManager.png")
-set(EXTENSION_SCREENSHOTURLS "https://www.example.com/Slicer/Extensions/GenericSpecimenManager/Screenshots/1.png")
+set(EXTENSION_DESCRIPTION "A JSON-configured module for repetitive, specimen-by-specimen segmentation and annotation work: consistent file and segment naming, per-specimen status tracking, and batch export of segments, statistics and markups into data that is safe to analyse automatically.")
+set(EXTENSION_ICONURL "https://raw.githubusercontent.com/dfajtai/GenericSpecimenManager/main/GenericSpecimenManager/GenericSpecimenManager/Resources/Icons/GenericSpecimenManager.png")
+# TODO: add real screenshots (e.g. docs/images/*.png in this repo) and list their raw.githubusercontent.com URLs here
+# set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/dfajtai/GenericSpecimenManager/main/docs/images/1.png")
 set(EXTENSION_DEPENDS "NA") # Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------

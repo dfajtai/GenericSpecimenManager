@@ -1,6 +1,6 @@
 <!--
   Config Editor - Help / Cheat Sheet content.
-  Loaded by ConfigEditorDialog._onShowHelp() (via HelpDialog.show_cheatsheet_dialog) into a QTextBrowser (Qt's rich-text
+  Loaded by ConfigEditorDialog._onShowHelp() (via gui/help_dialog.show_cheatsheet_dialog) into a QTextBrowser (Qt's rich-text
   subset of HTML/CSS - not a full browser engine, keep markup simple).
   Static content only - if you need per-preset dynamic content, see
   example_presets_template.html instead, which has a {{CONTENT}} placeholder.
@@ -65,7 +65,7 @@
 </ul></li>
 <li><b>Segment export settings</b>:
 <ul>
-<li><b>Reference image</b> - the geometry every exported segment labelmap is built on. "Suggest" fills it from the Images tab so you can just pick one.</li>
+<li><b>Reference image</b> - the geometry every exported segment labelmap is built on. A dropdown of the Images-tab names (it follows the table), so you can just pick one.</li>
 <li><b>Segments filter</b> - comma-separated segment names to limit which segments get exported to a file; empty = all. "Use all segments" fills it from the Segmentation tab. Independent of the Segment statistics settings' own filter below.</li>
 <li><b>Segment export pattern</b> - per-specimen subfolder joined onto Batch export root dir above. Supports <code>{column}</code> only (not <code>{date}</code>/<code>{time}</code>/<code>{datetime}</code>/<code>{index}</code>), e.g. <code>{batch}/{ID}</code> routes different specimens into different subfolders just by referencing that column. Empty -> your key columns, joined.</li>
 </ul></li>
@@ -86,12 +86,13 @@
 <a name="images"></a>
 <h2>&#128444; Images</h2>
 <ul>
-<li><b>Quick-add table</b> - one row per preseg CSV column (key columns excluded). Check <b>Add</b> to include it as an image row; check <b>Labelmap</b> if it's a mask/label image instead of a regular volume.</li>
-<li><code>Pattern</code> (regex) - instead of one fixed image, opens <b>one image per matching, non-empty</b> <code>preseg.csv</code> column for a given specimen. Name = that column's name (Strip prefix/suffix trims it). Different specimens can end up with different numbers of images.</li>
+<li><b>Quick add from preseg columns...</b> - a popup listing one row per preseg CSV column (key columns excluded). Check <b>Add</b> to include a column as an image row; check <b>Labelmap</b> if it's a mask/label image instead of a regular volume. Then <b>Add checked columns</b>.</li>
+<li><b>Where an image's file comes from</b> - its <b>CSV column</b> value for that specimen if it has one; otherwise the <b>Default path pattern</b> (the field above the table, <code>defaults.image.path_pattern</code>): a <code>{column}</code> pattern over any key/<code>database.csv</code>/<code>preseg.csv</code> column, plus <code>{name}</code> (the row's Name), relative to Study dir. A single row can carry its own pattern in <b>Edit advanced...</b> &rarr; <i>Path pattern</i>.</li>
+<li><b>Images that are not in the preseg CSV</b> - only the rows in this table are ever loaded (extra preseg columns are ignored). To add another image by hand, add a row with just a <b>Name</b> and leave <b>CSV column</b> empty: the Default path pattern finds its file, e.g. <code>{ID}_{measurement}_{name}.nii.gz</code> or <code>{col1}/{col2}.nii.gz</code>, as long as those columns exist. Initialize Study checks the column names against the CSV headers.</li>
 <li><b>Role</b> - background/label/foreground control slice-view layers (label/foreground also use Opacity). <code>(none)</code> = loaded but not shown as a layer.</li>
 <li><b>Preset</b> - a <u>dropdown</u>, populated live from whatever's currently in the Presets JSON field (Defaults/Presets tab). Add/rename a preset there and every row's list updates immediately, keeping each row's current selection if it's still valid.</li>
 <li><b>Color table</b> - also a dropdown, pre-filled with common built-in Slicer color tables (Grey, Rainbow, the PET-* and Warm/Cool families, single-hue <code>vtkMRMLColorTableNode*</code> tables) - but it's <u>editable</u>, so type any other valid color node ID/name if yours isn't listed.</li>
-<li><b>Edit advanced...</b> - window/level, threshold, interpolate for just that row. Rows with something set here are tinted and show a short summary in the <b>Advanced</b> column. The <b>Effective settings</b> box below the table always shows the actual merged result for the selected row.</li>
+<li><b>Edit advanced...</b> - path pattern, window/level, threshold, interpolate for just that row. Rows with something set here are tinted and show a short summary in the <b>Advanced</b> column. The <b>Effective settings</b> box below the table always shows the actual merged result for the selected row.</li>
 </ul>
 <table class="merge">
 <tr><td class="step">1</td><td><code>defaults.image</code> - applies to every row</td></tr>
@@ -102,7 +103,7 @@
 <a name="segmentation"></a>
 <h2>&#129504; Segmentation</h2>
 <ul>
-<li><b>Reference image</b> - an Images-tab <code>name</code> used as the geometry reference for the whole segmentation.</li>
+<li><b>Reference image</b> - a dropdown of the Images-tab <code>name</code>s (it follows the table); the pick is used as the geometry reference for the whole segmentation.</li>
 <li><b>Path pattern</b> - fallback naming for segment rows with no CSV column/path of their own, e.g. <code>{ID}/{measurement}/{ID}-{segment_name}.nii.gz</code>.</li>
 <li><b>Source = file</b> - tries CSV column / path pattern, falls back to an empty placeholder if nothing resolves. <b>Source = empty</b> - never tries a file, always a manual placeholder.</li>
 </ul>
@@ -112,6 +113,8 @@
 <ul>
 <li><b>Template file</b> - if a specimen has no markups yet, this file loads as the starting point (renamed to that specimen) instead of an empty fiducial list.</li>
 <li><b>Color</b> - the markup point color: <i>Set color...</i> opens a color picker, <i>Clear</i> leaves Slicer's default.</li>
+<li><b>Size</b> - the markup point size: the <i>Scale</i> of Slicer's Markups display settings (e.g. <code>3</code> = Slicer's usual, larger = bigger points), or, with <b>in mm</b> checked, a real-world size in millimetres. Empty leaves Slicer's default.</li>
+<li><b>Shape</b> - the point glyph. <code>Sphere3D</code> is a real 3D ball: it is cut by each slice plane, so it shows across several neighbouring slices (as a shrinking circle) - best together with <b>Size</b> set in <b>mm</b>. The <code>*2D</code> shapes are flat markers seen only on the slice they sit on. <code>(unset)</code> leaves Slicer's default.</li>
 </ul>
 
 <a name="workspace"></a>

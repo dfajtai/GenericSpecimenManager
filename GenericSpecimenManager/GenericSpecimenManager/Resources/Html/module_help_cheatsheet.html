@@ -1,8 +1,8 @@
 <!--
   Main module - Help / Cheat Sheet content.
-  Loaded by the module's Help section (via HelpDialog.show_cheatsheet_dialog) into a
+  Loaded by the module's Help section (via gui/help_dialog.show_cheatsheet_dialog) into a
   QTextBrowser (Qt's rich-text subset of HTML/CSS - keep markup simple). The anchors below
-  are listed in MODULE_HELP_SECTIONS in GenericSpecimenEngine.py - keep the two in sync.
+  are listed in MODULE_HELP_SECTIONS in Resources/gui/main_widget.py - keep the two in sync.
 -->
 <style>
   body { font-family: sans-serif; font-size: 13px; }
@@ -71,6 +71,7 @@
 <ul>
 <li><b>Load selected specimen</b> - one specimen can be active at a time. Close it before loading another.</li>
 <li><b>Save progress for active specimen</b> - writes its segmentation and markups (and any image you changed) into the specimen's output folder. <b>Ctrl+S</b> does the same, from any module, while a specimen is loaded (quietly, with a status-bar note); without a loaded specimen Ctrl+S is Slicer's own Save scene again.</li>
+<li><b>Data safety</b> - saves are atomic (a failed write never damages the old file), <code>database.csv</code> is backed up into a <code>.backups</code> folder and asks before overwriting a version changed on disk meanwhile, segmentation and markups keep the previous save as <code>.prev</code>, and a lock file warns when the study is open in another session. Details: <code>docs/data-safety.md</code>.</li>
 <li><b>Close active specimen</b> - never saves the specimen's work; save first if you want to keep it. The dialog offers <i>Yes</i>, <i>Yes, mark to review</i>, <i>Yes, mark finished</i> and <i>No</i>.</li>
 </ul>
 
@@ -93,5 +94,5 @@
 <h2>&#128273; Config</h2>
 <ul>
 <li>The whole study is described by one JSON file - use <b>Config Editor...</b> for a guided form; its own <b>Help</b> button has the full key reference.</li>
-<li>The complete schema is in the project README.</li>
+<li>The complete schema is in the Config reference (<code>docs/config-reference.md</code> in the repository).</li>
 </ul>

@@ -2,13 +2,11 @@
 GenericSpecimenManager
 ======================
 
-Thin wrapper around Resources/GenericSpecimenEngine.py.
+Thin wrapper around Resources/gui/main_widget.py.
 
-Unlike the per-species wrappers (DeerSegmentor, PigChunker, RabbitVertCount),
-this one does NOT lock a CONFIG_PATH - the "Select .json file" row stays
-visible so you can point it at any study config.json at runtime. Good for
-trying out a new config before "graduating" it into its own thin wrapper
-module with its own name/icon.
+This module does NOT lock a CONFIG_PATH (CONFIG_PATH = None) - the "Select .json
+file" row stays visible so you can point it at any study config.json at runtime.
+(Setting CONFIG_PATH in a subclass would lock a wrapper module to one study.)
 """
 
 import os
@@ -19,14 +17,14 @@ _THIS_DIR = os.path.dirname(__file__)
 if _THIS_DIR not in sys.path:
     sys.path.append(_THIS_DIR)
 
-from Resources.GenericSpecimenEngine import GenericSpecimenManagerWidgetBase  # noqa: E402
+from Resources.gui.main_widget import GenericSpecimenManagerWidgetBase  # noqa: E402
 
 import slicer
 from slicer.ScriptedLoadableModule import *
 
 
 class GenericSpecimenManager(ScriptedLoadableModule):
-    """The Slicer module registration - title/icon/CONFIG_PATH live here; all real behavior is in Resources/GenericSpecimenEngine.py."""
+    """The Slicer module registration - title/icon/CONFIG_PATH live here; all real behavior is in the Resources/ packages (core, study, gui)."""
     def __init__(self, parent):
         """Register this module with Slicer: sets title/category/contributors and, if present, a custom icon from Resources/Icons/<ModuleName>.png."""
         ScriptedLoadableModule.__init__(self, parent)
@@ -45,7 +43,7 @@ class GenericSpecimenManager(ScriptedLoadableModule):
         <li><b>Batch export</b> processes every <i>finished</i> specimen: segment files, segment statistics, markups and a markup summary.</li>
         </ol>
         Full config schema and key reference:
-        <a href="https://github.com/dfajtai/GenericSpecimenManager#readme">README on GitHub</a>.
+        <a href="https://github.com/dfajtai/GenericSpecimenManager/blob/main/docs/config-reference.md">Config reference on GitHub</a>.
         The same reference is also available offline: open the Config Editor and press its <b>Help</b> button.
         """
         self.parent.acknowledgementText = ""
