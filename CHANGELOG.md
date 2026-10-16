@@ -9,6 +9,12 @@ Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 
 - **Config Editor, Images and Segmentation tabs**: *Move up* / *Move down* buttons reorder the selected row; the button is disabled when the row is already first / last.
 
+- **Config Editor, Segment editor tab**: `overwrite_mode` `none` (= allow overlap) is a real value and is now saved; the dropdown gained `(unset)` (key omitted, Slicer's own setting left alone). Before, `none` was dropped, and a config with only a brush also forced overlap on.
+
+- **Segment editor `editable_area`** (new): the Segment Editor's *Editable area* (`everywhere`, `inside_all_segments`, `inside_visible_segments`, `outside_all_segments`, `outside_visible_segments`) can be set in the config and the Config Editor's Segment editor tab; unset leaves Slicer's own setting (everywhere).
+
+- **Segmentation opacity**: `segmentation.opacity` (0-1) now actually sets the segmentation's display opacity (it was in the schema but never applied), and has a field on the Config Editor's Segmentation tab; empty = 1.
+
 ## 2026-09-25
 
 - **Repository restructured** for a public release: the docs live in `docs/` (config reference, Config Editor, main module, batch export, volume rendering, architecture, Segment Editor design notes, roadmap), step-by-step guides in `howto/`, study configs in `examples/config/`. The root README is now a landing page; the extension has its own README. `UPDATES.md` became this `CHANGELOG.md`; `TODO.md` became `docs/roadmap.md`. The unused `Examples/` wrapper modules were removed.

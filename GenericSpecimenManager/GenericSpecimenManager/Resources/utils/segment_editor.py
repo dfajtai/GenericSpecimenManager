@@ -12,19 +12,73 @@ parameters use the "EffectName.ParamName" form (e.g. "Paint.ColorSmudge"). Earli
 brush keys with "Paint," / "Paint." - that attribute never existed, so nothing ever applied.
 """
 
+import re
+
 import slicer
 
 from Resources.core.logging_setup import logger
 
 
 def overwrite_value(overwrite_mode):
-    """The vtkMRMLSegmentEditorNode overwrite-mode constant for a config value ('none' | 'all_segments' | 'visible_segments'; unset/unknown -> none)."""
+    """The vtkMRMLSegmentEditorNode overwrite-mode constant for a config value ('none' | 'all_segments' | 'visible_segments'; unknown -> none), or None when the value is unset - 'none' is a real choice (allow overlap) and must not be confused with 'not configured', which leaves Slicer's own setting alone."""
+    if not overwrite_mode:
+        return None
     node_class = slicer.vtkMRMLSegmentEditorNode
     return {
         "none": node_class.OverwriteNone,
         "all_segments": node_class.OverwriteAllSegments,
         "visible_segments": node_class.OverwriteVisibleSegments,
-    }.get(overwrite_mode or "none", node_class.OverwriteNone)
+    }.get(overwrite_mode, node_class.OverwriteNone)
+
+
+_MASK_PREFIX = "EditAllowed"
+_UNSUPPORTED_MASK_MODES = ("InsideSingleSegment",)   # needs a segment ID, which a study-level config cannot know
+
+
+def camel_to_snake(text):
+    """'InsideAllSegments' -> 'inside_all_segments' (the form used for the config value)."""
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", text).lower()
+
+
+def camel_to_label(text):
+    """'InsideAllSegments' -> 'Inside all segments' (first word capitalised, rest lower case - the wording of Slicer's own GUI)."""
+    words = camel_to_snake(text).replace("_", " ")
+    return words[:1].upper() + words[1:]
+
+
+def mask_mode_names():
+    """[(mode integer, name without the 'EditAllowed' prefix), ...] as Slicer itself reports them, e.g. (1, 'InsideAllSegments'). The EditAllowed* constants are not visible as Python attributes (dir() finds none), but the static vtkMRMLSegmentationNode.ConvertMaskModeToString(int) works (checked in Slicer 5.12: 0 -> 'EditAllowedEverywhere'), so the list is read from Slicer instead of hard-coded: a renamed or renumbered mode cannot silently pick the wrong one. Modes a config cannot express (_UNSUPPORTED_MASK_MODES) are left out."""
+    modes = []
+    for mode in range(16):   # there are only ~6 modes; stop at the first name that is not an EditAllowed one
+        name = slicer.vtkMRMLSegmentationNode.ConvertMaskModeToString(mode)
+        if not name or not str(name).startswith(_MASK_PREFIX):
+            break
+        suffix = str(name)[len(_MASK_PREFIX):]
+        if suffix not in _UNSUPPORTED_MASK_MODES:
+            modes.append((mode, suffix))
+    return modes
+
+
+def editable_area_choices():
+    """{config value: GUI label} for the editable-area dropdown, built from Slicer's own mode names ('InsideAllSegments' -> {'inside_all_segments': 'Inside all segments'}); {} if this Slicer cannot report them."""
+    try:
+        return {camel_to_snake(suffix): camel_to_label(suffix) for _mode, suffix in mask_mode_names()}
+    except Exception as e:
+        logger.warning(f"[GenericSpecimenManager] could not read Slicer's editable-area modes: {e}")
+        return {}
+
+
+def editable_area_value(editable_area):
+    """The mask-mode integer for a config value ('inside_all_segments'), or None when unset (leave Slicer's own setting alone) or unknown to this Slicer (warned). Callers must test `is None`: Everywhere is 0."""
+    if not editable_area:
+        return None
+    modes = mask_mode_names()
+    for mode, suffix in modes:
+        if camel_to_snake(suffix) == editable_area:
+            return mode
+    logger.warning(f"[GenericSpecimenManager] segment_editor.editable_area '{editable_area}' is not supported by this Slicer, "
+                   f"ignored (modes it knows: {[camel_to_snake(s) for _m, s in modes]})")
+    return None
 
 
 def editor_attributes(se_cfg):
@@ -75,13 +129,17 @@ def configure_segment_editor_defaults(se_cfg):
         return
 
     overwrite = overwrite_value(se_cfg.overwrite_mode)
+    mask_mode = editable_area_value(se_cfg.editable_area)
     attrs = editor_attributes(se_cfg)
 
     def _apply_common(node):
         """Safe on ANY node, including a bare template with no context:
         overwrite mode and plain data attributes never trigger live
         widget/effect behaviour by themselves."""
-        node.SetOverwriteMode(overwrite)
+        if overwrite is not None:
+            node.SetOverwriteMode(overwrite)
+        if mask_mode is not None:
+            node.SetMaskMode(mask_mode)
         for k, v in attrs.items():
             node.SetAttribute(k, v)
 
@@ -112,7 +170,7 @@ def configure_segment_editor_defaults(se_cfg):
             # (has a segmentation attached) - not a bare/template node.
             existing_node.SetActiveEffectName(se_cfg.active_effect)
 
-    logger.info(f"[GenericSpecimenManager] segment editor defaults applied: overwrite={overwrite}, attrs={attrs}, "
+    logger.info(f"[GenericSpecimenManager] segment editor defaults applied: overwrite={overwrite}, editable_area={mask_mode}, attrs={attrs}, "
                 f"active_effect_requested={se_cfg.active_effect}, patched_existing_node={existing_node is not None}")
 
 
@@ -145,7 +203,12 @@ def activate_segment_editor(se_cfg, segmentation_node, reference_node=None):
         logger.warning("[GenericSpecimen] Segment Editor widget produced no live node, skipping")
         return
 
-    editorNode.SetOverwriteMode(overwrite_value(se_cfg.overwrite_mode))
+    overwrite = overwrite_value(se_cfg.overwrite_mode)
+    if overwrite is not None:
+        editorNode.SetOverwriteMode(overwrite)
+    mask_mode = editable_area_value(se_cfg.editable_area)
+    if mask_mode is not None:
+        editorNode.SetMaskMode(mask_mode)
     for k, v in editor_attributes(se_cfg).items():
         editorNode.SetAttribute(k, v)
 

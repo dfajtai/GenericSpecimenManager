@@ -54,6 +54,25 @@ def set_combo_value(combo, value):
     combo.currentText = value or UNSET
 
 
+def fill_labeled_combo(combo, labels):
+    """Fill an optional dropdown with '(unset)' followed by the display labels of a {config value: label} dict."""
+    combo.addItems([UNSET] + list(labels.values()))
+
+
+def set_labeled_combo(combo, labels, value):
+    """Select the entry for config `value` (its display label); empty/unknown selects '(unset)'."""
+    combo.currentText = labels.get(value or "", UNSET)
+
+
+def labeled_combo_value(combo, labels):
+    """The config value behind the selected display label of a labeled dropdown; '(unset)' -> ''."""
+    text = combo.currentText
+    for value, label in labels.items():
+        if label == text:
+            return value
+    return ""
+
+
 def move_target(row, delta, count):
     """Row index a row would move to when shifted by `delta` (-1 = up, +1 = down) in a table of `count` rows, or None when it cannot move (nothing selected, or already first/last) - also tells the Move buttons whether to be enabled."""
     if row is None or row < 0 or row >= count:

@@ -24,7 +24,7 @@ for _name in ("slicer", "qt", "vtk", "ctk"):
     sys.modules.setdefault(_name, _StubModule(_name))
 
 from Resources.core.config_model import SegmentEditorConfig  # noqa: E402
-from Resources.utils.segment_editor import editor_attributes  # noqa: E402
+from Resources.utils.segment_editor import camel_to_label, camel_to_snake, editor_attributes  # noqa: E402
 from Resources.utils.volume_rendering import offset_transfer_function, remap_transfer_function  # noqa: E402
 
 
@@ -85,6 +85,19 @@ class TransferFunctionTest(unittest.TestCase):
         func = FakeOpacityFunction([])
         remap_transfer_function(func, 0, 1)
         self.assertEqual(func.nodes, [])
+
+
+class CamelCaseTest(unittest.TestCase):
+    """Slicer's CamelCase mode names -> config value and GUI label."""
+
+    def test_snake(self):
+        self.assertEqual(camel_to_snake("Everywhere"), "everywhere")
+        self.assertEqual(camel_to_snake("InsideAllSegments"), "inside_all_segments")
+        self.assertEqual(camel_to_snake("OutsideVisibleSegments"), "outside_visible_segments")
+
+    def test_label(self):
+        self.assertEqual(camel_to_label("Everywhere"), "Everywhere")
+        self.assertEqual(camel_to_label("InsideVisibleSegments"), "Inside visible segments")
 
 
 class MoveTargetTest(unittest.TestCase):

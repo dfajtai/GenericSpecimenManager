@@ -119,8 +119,13 @@ MARKUPS_GLYPH_CHOICES = [UNSET, "Sphere3D", "Vertex2D", "Circle2D", "Cross2D", "
 ROLE_CHOICES = ["(none)", "background", "label", "foreground"]
 TYPE_CHOICES = ["volume", "labelmap"]
 SOURCE_CHOICES = ["file", "empty"]
-OVERWRITE_CHOICES = ["none", "all_segments", "visible_segments"]
-BRUSH_SHAPE_CHOICES = ["(unset)", "sphere", "circle"]
+
+# The Segment Editor choices (overwrite_mode, brush shape; editable_area comes from Slicer itself - see utils/segment_editor.py) as {config value: display label}; (unset) is added by the dropdown
+# and leaves Slicer's own setting alone. What the Config Editor shows: the wording of Slicer's own Segment Editor GUI
+# (first word capitalised, then lower case with spaces). The config file keeps the identifiers; only the display differs.
+OVERWRITE_LABELS = {"none": "Allow overlap", "all_segments": "Overwrite all segments",
+                    "visible_segments": "Overwrite visible segments"}
+BRUSH_SHAPE_LABELS = {"sphere": "Sphere", "circle": "Circle"}
 
 COLOR_TABLE_CHOICES = [
     UNSET, "Grey", "Rainbow", "Random", "Labels", "GenericAnatomyColors",

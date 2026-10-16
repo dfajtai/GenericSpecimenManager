@@ -13,7 +13,7 @@ from Resources.core.logging_setup import logger
 
 
 def customize_workplace(cfg, segmentation_node=None):
-    """Per-specimen workspace touch-ups: get-or-create (never replace - see the comment inline for why) the default Segment Editor node, link slice views, switch to the standard Four-Up layout, tune the crosshair, apply the blanket window/level if configured, and set every segment's 2D fill/outline opacity. `cfg` is the StudyConfig."""
+    """Per-specimen workspace touch-ups: get-or-create (never replace - see the comment inline for why) the default Segment Editor node, link slice views, switch to the standard Four-Up layout, tune the crosshair, apply the blanket window/level if configured, set the segmentation's overall opacity and every segment's 2D fill/outline opacity. `cfg` is the StudyConfig."""
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
 
     defaultSegmentEditorNode = slicer.mrmlScene.GetDefaultNodeByClass("vtkMRMLSegmentEditorNode")
@@ -41,6 +41,10 @@ def customize_workplace(cfg, segmentation_node=None):
             v.SetWindowLevelMinMax(wl_cfg.min if wl_cfg.min is not None else -150, wl_cfg.max if wl_cfg.max is not None else 700)
 
     if segmentation_node is not None:
+        # segmentation.opacity: the whole segmentation's display opacity (2D and 3D); empty = 1 (opaque). It multiplies with the per-segment 2D fill opacity below.
+        opacity = cfg.segmentation.opacity
+        opacity = 1.0 if opacity is None else min(1.0, max(0.0, float(opacity)))
+        segmentation_node.GetDisplayNode().SetOpacity(opacity)
         seg = segmentation_node.GetSegmentation()
         for seg_id in list(seg.GetSegmentIDs()):
             segmentation_node.GetDisplayNode().SetSegmentOpacity2DFill(seg_id, 0.85)

@@ -43,7 +43,8 @@ The complete `config.json` schema (1:1 with `core/config_model.py`) and a key re
       { "name": "liver", "csv_column": "liver_path", "color": [0.8,0.1,0.1] },  // source: "file" (default)
       { "name": "tumor", "source": "empty", "color": [1,1,0] }                   // never tries a file
     ],
-    "output_filename": "segment.seg.nrrd", "opacity": 0.5
+    "output_filename": "segment.seg.nrrd",
+    "opacity": 0.5                                 // whole-segmentation display opacity 0-1; omit = 1
   },
 
   "markups": { "enabled": true, "csv_column": "markups_path", "path_pattern": "{label}-markups.mrk.json",
@@ -81,7 +82,8 @@ The complete `config.json` schema (1:1 with `core/config_model.py`) and a key re
   },
 
   "segment_editor": {
-    "overwrite_mode": "none",     // "none" = allow overlap (default) | "all_segments" | "visible_segments"
+    "overwrite_mode": "none",     // omit = leave Slicer's setting alone | "none" = allow overlap | "all_segments" | "visible_segments"
+    "editable_area": "everywhere", // omit = leave Slicer's setting alone (it is "everywhere") | "inside_all_segments" | "inside_visible_segments" | "outside_all_segments" | "outside_visible_segments"
     "brush": { "shape": "sphere", "diameter_mm": 5, "relative": false },
     "active_effect": "Paint",
     "attributes": { "BrushSphere": "1" }    // escape hatch, see the key format note below

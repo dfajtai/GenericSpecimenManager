@@ -489,15 +489,16 @@ class BrushConfig:
 
 @dataclass
 class SegmentEditorConfig:
-    """cfg.segment_editor - Segment Editor defaults (overwrite mode, brush, which effect to pre-select, and a raw attribute escape hatch) applied once at Study Init and again per-specimen once a real segmentation exists."""
-    overwrite_mode: Optional[str] = None     # "none" (default = allow overlap) | "all_segments" | "visible_segments"
+    """cfg.segment_editor - Segment Editor defaults (overwrite mode, editable area, brush, which effect to pre-select, and a raw attribute escape hatch) applied once at Study Init and again per-specimen once a real segmentation exists."""
+    overwrite_mode: Optional[str] = None     # None = leave Slicer's setting alone | "none" (= allow overlap) | "all_segments" | "visible_segments"
+    editable_area: Optional[str] = None      # None = leave Slicer's setting alone (it is "everywhere") | "everywhere" | "inside_all_segments" | "inside_visible_segments" | "outside_all_segments" | "outside_visible_segments"
     brush: Optional[BrushConfig] = None
     active_effect: Optional[str] = None
     attributes: Dict[str, Any] = field(default_factory=dict)
 
     def is_configured(self) -> bool:
         """True if any field here was actually set in the config - used to decide whether to touch the Segment Editor at all (an all-default/empty block means 'leave Slicer's own defaults alone')."""
-        return bool(self.overwrite_mode or self.brush or self.active_effect or self.attributes)
+        return bool(self.overwrite_mode or self.editable_area or self.brush or self.active_effect or self.attributes)
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):

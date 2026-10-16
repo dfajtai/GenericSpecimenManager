@@ -66,7 +66,7 @@ empty or not set - so an image that is not in the preseg CSV can be added as a
 name-only row.
 
 **Segmentation** - enabled, reference_image, path_pattern, output_filename; a
-a segments table (name, source, csv_column, path_pattern, color picker) with **Move up** / **Move down** to reorder the selected segment.
+an **Opacity** field (`segmentation.opacity`, 0-1, empty = 1), a segments table (name, source, csv_column, path_pattern, color picker) with **Move up** / **Move down** to reorder the selected segment.
 
 **Markups** - enabled, csv_column, path_pattern, template_path, writable,
 color (a picker - *Set color...* / *Clear*, same as the segments' colors), size (point scale, or millimetres with *in mm*) and shape (e.g. *Sphere3D*, a 3D ball that shows across several slices).
@@ -77,7 +77,7 @@ marker - all applied once per specimen load. Every field defaults to
 `(unset)` (leave Slicer's own default alone) except the three crosshair
 fields, which fall back to this module's long-standing defaults.
 
-**Segment editor** - overwrite_mode; brush (shape/diameter/"Use absolute size
+**Segment editor** - **Masking** group: editable_area (where painting is allowed - Everywhere / Inside or Outside all or visible segments; `(unset)` = Slicer's own, which is everywhere); "Modify other segments" = overwrite_mode (`(unset)` leaves Slicer's own setting alone; `none` is a real value = allow overlap, and is saved); brush (shape/diameter/"Use absolute size
 (mm)" checkbox); active_effect; raw attributes (JSON).
 
 **Volume rendering** - a table, one row per Images-tab image: Image / Enable /

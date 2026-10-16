@@ -7,7 +7,7 @@ Segmentation tab: reference image, path pattern, the segments table.
 import qt
 
 from Resources.definitions import SOURCE_CHOICES
-from Resources.gui.config_editor.helpers import DEFAULT_SEGMENT_COLOR, move_target, update_move_buttons
+from Resources.gui.config_editor.helpers import DEFAULT_SEGMENT_COLOR, move_target, to_float, update_move_buttons
 
 
 class SegmentationTabMixin:
@@ -46,6 +46,11 @@ class SegmentationTabMixin:
         self.segOutputFilenameEdit = qt.QLineEdit("segment.seg.nrrd")
         self.segOutputFilenameEdit.setToolTip("Filename (inside each specimen's output folder) the segmentation is saved to/loaded from.")
         form.addRow("Output filename:", self.segOutputFilenameEdit)
+        self.segOpacityEdit = qt.QLineEdit()
+        self.segOpacityEdit.setPlaceholderText("1")
+        self.segOpacityEdit.setMaximumWidth(110)
+        self.segOpacityEdit.setToolTip("Opacity of the whole segmentation in the slice and 3D views, 0-1 (segmentation.opacity). Empty = 1 (opaque).")
+        form.addRow("Opacity:", self.segOpacityEdit)
         layout.addLayout(form)
 
         self.segTable = qt.QTableWidget(0, 5)
@@ -203,6 +208,7 @@ class SegmentationTabMixin:
         self.segReferenceImageEdit.currentText = seg.get("reference_image", "") or ""
         self.segPathPatternEdit.text = seg.get("path_pattern", "") or ""
         self.segOutputFilenameEdit.text = seg.get("output_filename", "segment.seg.nrrd")
+        self.segOpacityEdit.text = "" if seg.get("opacity") is None else str(seg["opacity"])
         for s in seg.get("segments", []):
             self._addSegmentRow(s)
 
@@ -218,6 +224,9 @@ class SegmentationTabMixin:
             if self.segPathPatternEdit.text.strip():
                 seg["path_pattern"] = self.segPathPatternEdit.text.strip()
             seg["output_filename"] = self.segOutputFilenameEdit.text.strip() or "segment.seg.nrrd"
+            opacity = to_float(self.segOpacityEdit.text)
+            if opacity is not None:
+                seg["opacity"] = opacity
             seg["segments"] = segments
             cfg["segmentation"] = seg
 
@@ -226,6 +235,7 @@ class SegmentationTabMixin:
         """Reset the Segmentation tab to its blank/default state."""
         self.segPathPatternEdit.text = ""
         self.segOutputFilenameEdit.text = "segment.seg.nrrd"
+        self.segOpacityEdit.text = ""
         self.chkSegEnabled.checked = False
         self.segReferenceImageEdit.currentText = ""
         self.segTable.setRowCount(0)

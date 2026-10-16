@@ -106,6 +106,7 @@
 <ul>
 <li><b>Reference image</b> - a dropdown of the Images-tab <code>name</code>s (it follows the table); the pick is used as the geometry reference for the whole segmentation.</li>
 <li><b>Path pattern</b> - fallback naming for segment rows with no CSV column/path of their own, e.g. <code>{ID}/{measurement}/{ID}-{segment_name}.nii.gz</code>.</li>
+<li><b>Opacity</b> - display opacity of the whole segmentation (slice and 3D views), 0-1; empty = 1 (opaque). Multiplies with the fixed per-segment 2D fill opacity.</li>
 <li><b>Source = file</b> - tries CSV column / path pattern, falls back to an empty placeholder if nothing resolves. <b>Source = empty</b> - never tries a file, always a manual placeholder.</li>
 </ul>
 
@@ -134,6 +135,7 @@
 <h2>&#128394; Segment editor</h2>
 <ul>
 <li><b>Overwrite mode = none</b> - same as the Segment Editor's "Allow overlap" checkbox. <code>all_segments</code>/<code>visible_segments</code> restrict painting so it doesn't eat into other segments.</li>
+<li><b>Editable area</b> - where painting is allowed, like the Segment Editor's dropdown of the same name: <code>everywhere</code>, or only <code>inside</code> / <code>outside</code> <code>all_segments</code> / <code>visible_segments</code>. <code>(unset)</code> leaves Slicer's own setting (everywhere).</li>
 <li><b>Use absolute size (mm)</b> checked + shape <code>sphere</code> - fixed-size 3D brush in millimeters, regardless of zoom (e.g. always exactly 5&nbsp;mm). Unchecked - size as a % of the slice view instead (grows/shrinks as you zoom).</li>
 <li>Applied <b>once</b>, at Study Init - not re-applied per specimen. It's set on two places so it works whether or not Segment Editor was already opened this session:
   <ul>
