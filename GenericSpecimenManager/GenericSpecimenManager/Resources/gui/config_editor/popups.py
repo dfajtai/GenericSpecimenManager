@@ -19,9 +19,18 @@ class ImageAdvancedPopup(qt.QDialog):
         """Build the path_pattern/window_level/threshold/interpolate form, pre-filled from `data` (the row's current advanced dict)."""
         qt.QDialog.__init__(self, parent)
         self.setWindowTitle("Advanced image fields")
-        self.setMinimumWidth(540)   # wide enough for the path pattern; the height follows the content
+        self.setMinimumWidth(640)   # wide enough for the path pattern
         data = dict(data or {})
-        layout = qt.QVBoxLayout(self)
+        # The form sits in a scroll area and the OK/Cancel row stays pinned below it: with four group boxes the
+        # dialog can be taller than the screen, which used to push the buttons out of view (nothing could be confirmed).
+        outer = qt.QVBoxLayout(self)
+        scroll = qt.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(360)
+        content = qt.QWidget()
+        layout = qt.QVBoxLayout(content)
+        scroll.setWidget(content)
+        outer.addWidget(scroll, 1)
 
         intro = qt.QLabel("These settings apply to <b>this image row only</b> - on top of the defaults and the row's preset.")
         intro.setWordWrap(True)
@@ -35,12 +44,11 @@ class ImageAdvancedPopup(qt.QDialog):
         self.pathPatternEdit.setPlaceholderText("e.g. {ID}_{measurement}_{name}.nii.gz")
         fileForm.addRow("Path pattern:", self.pathPatternEdit)
         fileLayout.addLayout(fileForm)
-        fileHint = qt.QLabel(
-            "Used when this row's CSV column is empty for a specimen. <code>{column}</code> = any CSV column value, "
-            "<code>{name}</code> = this image's name; relative to Study dir. Leave empty to use the Default path pattern.")
-        fileHint.setWordWrap(True)
-        fileHint.setStyleSheet("color: gray;")
-        fileLayout.addWidget(fileHint)
+        self.pathPatternEdit.setToolTip(
+            "<html>Used when this row's CSV column is empty for a specimen.<br>"
+            "&bull; {column} - any CSV column value<br>"
+            "&bull; {name} - this image's name<br>"
+            "Relative to Study dir. Leave empty to use the Default path pattern.</html>")
         layout.addWidget(fileGroup)
 
         # ---- Window / level ----
@@ -83,10 +91,13 @@ class ImageAdvancedPopup(qt.QDialog):
         thRow = qt.QHBoxLayout()
         self.thMinEdit = qt.QLineEdit("" if th.get("min") is None else str(th["min"]))
         self.thMaxEdit = qt.QLineEdit("" if th.get("max") is None else str(th["max"]))
+        for edit in (self.thMinEdit, self.thMaxEdit):
+            edit.setMaximumWidth(110)   # a number, not a sentence
         thRow.addWidget(qt.QLabel("Min:"))
-        thRow.addWidget(self.thMinEdit, 1)
+        thRow.addWidget(self.thMinEdit)
         thRow.addWidget(qt.QLabel("Max:"))
-        thRow.addWidget(self.thMaxEdit, 1)
+        thRow.addWidget(self.thMaxEdit)
+        thRow.addStretch(1)
         thLayout.addLayout(thRow)
         self.chkThresholdApply = qt.QCheckBox("Apply (hide values outside the range)")
         self.chkThresholdApply.checked = th.get("apply", True)
@@ -103,10 +114,25 @@ class ImageAdvancedPopup(qt.QDialog):
         displayForm.addRow("Interpolate:", self.interpolateCombo)
         layout.addWidget(displayGroup)
 
-        buttons = qt.QDialogButtonBox(qt.QDialogButtonBox.Ok | qt.QDialogButtonBox.Cancel)
-        buttons.connect('accepted()', self.accept)
-        buttons.connect('rejected()', self.reject)
-        layout.addWidget(buttons)
+        # Plain buttons rather than a QDialogButtonBox: the box's standard buttons did not show up in Slicer's PythonQt.
+        buttonRow = qt.QHBoxLayout()
+        buttonRow.addStretch(1)
+        okBtn = qt.QPushButton("OK")
+        okBtn.setDefault(True)
+        okBtn.connect('clicked(bool)', lambda checked=False: self.accept())
+        cancelBtn = qt.QPushButton("Cancel")
+        cancelBtn.connect('clicked(bool)', lambda checked=False: self.reject())
+        buttonRow.addWidget(okBtn)
+        buttonRow.addWidget(cancelBtn)
+        outer.addLayout(buttonRow)
+
+        # Generous default size, but never taller than the screen, so the button row is always on it (the form above scrolls instead).
+        try:
+            screen_h = qt.QApplication.primaryScreen().availableGeometry().height
+            screen_h = screen_h() if callable(screen_h) else screen_h
+            self.resize(720, min(760, int(screen_h * 0.85)))
+        except Exception:
+            pass
 
     def _updateWlFields(self):
         """Relabel the two window/level value fields for the chosen mode (Min/Max vs Window/Level) and grey them out when the mode takes no numbers."""

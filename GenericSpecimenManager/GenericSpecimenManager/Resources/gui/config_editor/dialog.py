@@ -309,7 +309,8 @@ class ConfigEditorDialog(qt.QDialog, GeneralTabMixin, BatchExportTabMixin, Image
 
         try:
             cfg = self._buildConfig()
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[ConfigEditor] config not saved, could not build it: {e}")
             return False   # _parseJsonField already showed the error
 
         out_path = self.outputEdit.text.strip()
@@ -322,9 +323,11 @@ class ConfigEditorDialog(qt.QDialog, GeneralTabMixin, BatchExportTabMixin, Image
                     json.dump(cfg, f, indent=2, ensure_ascii=False)
             safe_io.atomic_write(out_path, write_json, keep_previous=True)
         except Exception as e:
+            logger.error(f"[ConfigEditor] failed to save config {out_path}: {e}")
             qt.QMessageBox.critical(self, "Config Editor", f"Failed to save: {e}")
             return False
 
+        logger.info(f"[ConfigEditor] saved config: {out_path}")
         self._current_path = out_path
         remember_config_path(out_path)
         self._dirty = False

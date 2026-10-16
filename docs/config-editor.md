@@ -60,13 +60,13 @@ table (name, csv_column, type, role, required, **Preset**
 dropdown populated live from the Presets JSON, **Color table** dropdown -
 curated + freely editable, opacity); "Edit advanced..." popup (path_pattern/window_level/
 threshold/interpolate); a live **Effective settings** preview for the
-selected row. A **Default path pattern** field above the table
+selected row; **Move up** / **Move down** reorder the selected row (the order is the load order; a button is disabled when the row is already first/last). A **Default path pattern** field above the table
 (`defaults.image.path_pattern`) finds the file of every image whose CSV column is
 empty or not set - so an image that is not in the preseg CSV can be added as a
 name-only row.
 
 **Segmentation** - enabled, reference_image, path_pattern, output_filename; a
-segments table (name, source, csv_column, path_pattern, color picker).
+a segments table (name, source, csv_column, path_pattern, color picker) with **Move up** / **Move down** to reorder the selected segment.
 
 **Markups** - enabled, csv_column, path_pattern, template_path, writable,
 color (a picker - *Set color...* / *Clear*, same as the segments' colors), size (point scale, or millimetres with *in mm*) and shape (e.g. *Sphere3D*, a 3D ball that shows across several slices).

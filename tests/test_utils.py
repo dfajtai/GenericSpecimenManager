@@ -87,5 +87,26 @@ class TransferFunctionTest(unittest.TestCase):
         self.assertEqual(func.nodes, [])
 
 
+class MoveTargetTest(unittest.TestCase):
+    """The Config Editor's Move up/down rule (images and segments tables)."""
+
+    def test_middle_row_can_move_both_ways(self):
+        from Resources.gui.config_editor.helpers import move_target
+        self.assertEqual(move_target(1, -1, 3), 0)
+        self.assertEqual(move_target(1, +1, 3), 2)
+
+    def test_first_and_last_row_are_blocked(self):
+        from Resources.gui.config_editor.helpers import move_target
+        self.assertIsNone(move_target(0, -1, 3))
+        self.assertIsNone(move_target(2, +1, 3))
+
+    def test_nothing_selected_or_empty_table(self):
+        from Resources.gui.config_editor.helpers import move_target
+        self.assertIsNone(move_target(-1, +1, 3))
+        self.assertIsNone(move_target(0, +1, 0))
+        self.assertIsNone(move_target(0, -1, 1))
+        self.assertIsNone(move_target(0, +1, 1))
+
+
 if __name__ == "__main__":
     unittest.main()

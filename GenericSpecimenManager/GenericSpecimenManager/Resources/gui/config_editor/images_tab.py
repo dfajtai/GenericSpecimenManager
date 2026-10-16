@@ -15,7 +15,7 @@ from Resources.definitions import (
     TYPE_CHOICES,
     UNSET,
 )
-from Resources.gui.config_editor.helpers import combo_value, set_combo_value, to_float
+from Resources.gui.config_editor.helpers import combo_value, move_target, set_combo_value, to_float, update_move_buttons
 from Resources.gui.config_editor.popups import ImageAdvancedPopup
 
 
@@ -100,6 +100,14 @@ class ImagesTabMixin:
         addBtn.connect('clicked(bool)', lambda checked=False: self._onAddImage())
         removeBtn = qt.QPushButton("Remove selected")
         removeBtn.connect('clicked(bool)', lambda checked=False: self._onRemoveImage())
+        self.imgMoveUpBtn = qt.QPushButton("Move up")
+        self.imgMoveUpBtn.setToolTip("Move the selected row one place up (the order is the load order). Disabled for the first row.")
+        self.imgMoveUpBtn.connect('clicked(bool)', lambda checked=False: self._onMoveImage(-1))
+        self.imgMoveDownBtn = qt.QPushButton("Move down")
+        self.imgMoveDownBtn.setToolTip("Move the selected row one place down (the order is the load order). Disabled for the last row.")
+        self.imgMoveDownBtn.connect('clicked(bool)', lambda checked=False: self._onMoveImage(+1))
+        self.imgMoveUpBtn.enabled = False
+        self.imgMoveDownBtn.enabled = False
         advBtn = qt.QPushButton("Edit advanced...")
         advBtn.setToolTip("Opens a form for the SELECTED row's path pattern, window/level, threshold, and interpolate settings.")
         advBtn.connect('clicked(bool)', lambda checked=False: self._onEditImageAdvanced())
@@ -109,6 +117,8 @@ class ImagesTabMixin:
         btnRow.addWidget(quickBtn)
         btnRow.addWidget(addBtn)
         btnRow.addWidget(removeBtn)
+        btnRow.addWidget(self.imgMoveUpBtn)
+        btnRow.addWidget(self.imgMoveDownBtn)
         btnRow.addWidget(advBtn)
         btnRow.addStretch(1)
         layout.addLayout(btnRow)
@@ -129,6 +139,7 @@ class ImagesTabMixin:
 
     def _onImageRowSelected(self):
         """Refresh the Effective Settings preview for the newly-selected image row (or clear it if nothing's selected)."""
+        update_move_buttons(self.imgTable, self.imgMoveUpBtn, self.imgMoveDownBtn)
         row = self.imgTable.currentRow()
         if row < 0:
             self.imgPreviewEdit.plainText = ""
@@ -322,6 +333,7 @@ class ImagesTabMixin:
     def _onAddImage(self):
         """Add one blank image row and re-sync the Volume Rendering table's image list."""
         self._addImageRow({})
+        update_move_buttons(self.imgTable, self.imgMoveUpBtn, self.imgMoveDownBtn)
         if hasattr(self, "vrTable"):
             self._refreshVrTable()
 
@@ -333,6 +345,24 @@ class ImagesTabMixin:
             if 0 <= r < len(self._image_advanced):
                 del self._image_advanced[r]
         self._markDirty()
+        update_move_buttons(self.imgTable, self.imgMoveUpBtn, self.imgMoveDownBtn)
+        if hasattr(self, "vrTable"):
+            self._refreshVrTable()
+
+    def _onMoveImage(self, delta):
+        """Move the selected image row up (-1) or down (+1). Rows hold widgets and the parallel _image_advanced list, so instead of shuffling cells this snapshots every row (unnamed ones too), swaps two entries and rebuilds the table through _addImageRow - the same path a loaded config takes - then re-selects the moved row and re-syncs the Volume Rendering table and Reference image dropdowns."""
+        row = self.imgTable.currentRow()
+        target = move_target(row, delta, self.imgTable.rowCount)
+        if target is None:
+            return
+        rows = [self._readImageRow(r, keep_unnamed=True) for r in range(self.imgTable.rowCount)]
+        rows[row], rows[target] = rows[target], rows[row]
+        self.imgTable.setRowCount(0)
+        self._image_advanced = []
+        for d in rows:
+            self._addImageRow(d)
+        self.imgTable.selectRow(target)
+        self._refreshReferenceImageChoices()
         if hasattr(self, "vrTable"):
             self._refreshVrTable()
 
@@ -349,11 +379,11 @@ class ImagesTabMixin:
             self._refreshImagePreview(row)
             self._markDirty()
 
-    def _readImageRow(self, row):
-        """Return the raw (unmerged) dict for one image row, or None if it has no name."""
+    def _readImageRow(self, row, keep_unnamed=False):
+        """Return the raw (unmerged) dict for one image row, or None if it has no name (unless keep_unnamed, used when rows are only being rearranged)."""
         d = {}
         name = self.imgTable.item(row, 0).text().strip()
-        if not name:
+        if not name and not keep_unnamed:
             return None
         d["name"] = name
         csv_column = self.imgTable.item(row, 1).text().strip()
@@ -427,3 +457,5 @@ class ImagesTabMixin:
         self.quickColumnsTable.setRowCount(0)
         self.imgTable.setRowCount(0)
         self._image_advanced = []
+        if hasattr(self, "imgMoveUpBtn"):
+            update_move_buttons(self.imgTable, self.imgMoveUpBtn, self.imgMoveDownBtn)

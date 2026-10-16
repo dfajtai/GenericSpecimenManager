@@ -52,3 +52,19 @@ def combo_value(combo):
 def set_combo_value(combo, value):
     """Select `value` in an optional dropdown; an empty value selects the '(unset)' entry instead of leaving a blank."""
     combo.currentText = value or UNSET
+
+
+def move_target(row, delta, count):
+    """Row index a row would move to when shifted by `delta` (-1 = up, +1 = down) in a table of `count` rows, or None when it cannot move (nothing selected, or already first/last) - also tells the Move buttons whether to be enabled."""
+    if row is None or row < 0 or row >= count:
+        return None
+    target = row + delta
+    return target if 0 <= target < count else None
+
+
+def update_move_buttons(table, upBtn, downBtn):
+    """Enable Move up/down for the table's selected row only when it has room to move that way (disabled for the first/last row, or when nothing is selected)."""
+    row = table.currentRow() if table.selectedIndexes() else -1
+    count = table.rowCount
+    upBtn.enabled = move_target(row, -1, count) is not None
+    downBtn.enabled = move_target(row, +1, count) is not None

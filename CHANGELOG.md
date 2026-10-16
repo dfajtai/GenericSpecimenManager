@@ -2,6 +2,13 @@
 
 Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 
+## 2026-10-16
+
+- **Config Editor, Images -> Edit advanced...**: the popup's OK/Cancel buttons could be pushed off-screen, so the entered values could not be confirmed or stored. The form now scrolls and the buttons stay pinned at the bottom.
+- **Config Editor** now logs saving the config: an INFO line with the path on success, an ERROR line when the write fails, a WARNING when the config could not be built.
+
+- **Config Editor, Images and Segmentation tabs**: *Move up* / *Move down* buttons reorder the selected row; the button is disabled when the row is already first / last.
+
 ## 2026-09-25
 
 - **Repository restructured** for a public release: the docs live in `docs/` (config reference, Config Editor, main module, batch export, volume rendering, architecture, Segment Editor design notes, roadmap), step-by-step guides in `howto/`, study configs in `examples/config/`. The root README is now a landing page; the extension has its own README. `UPDATES.md` became this `CHANGELOG.md`; `TODO.md` became `docs/roadmap.md`. The unused `Examples/` wrapper modules were removed.

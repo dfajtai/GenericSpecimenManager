@@ -7,7 +7,7 @@ Segmentation tab: reference image, path pattern, the segments table.
 import qt
 
 from Resources.definitions import SOURCE_CHOICES
-from Resources.gui.config_editor.helpers import DEFAULT_SEGMENT_COLOR
+from Resources.gui.config_editor.helpers import DEFAULT_SEGMENT_COLOR, move_target, update_move_buttons
 
 
 class SegmentationTabMixin:
@@ -75,10 +75,22 @@ class SegmentationTabMixin:
         addBtn.connect('clicked(bool)', lambda checked=False: self._onAddSegment())
         removeBtn = qt.QPushButton("Remove selected")
         removeBtn.connect('clicked(bool)', lambda checked=False: self._onRemoveSegment())
+        self.segMoveUpBtn = qt.QPushButton("Move up")
+        self.segMoveUpBtn.setToolTip("Move the selected segment one place up (the order is the segment order). Disabled for the first row.")
+        self.segMoveUpBtn.connect('clicked(bool)', lambda checked=False: self._onMoveSegment(-1))
+        self.segMoveDownBtn = qt.QPushButton("Move down")
+        self.segMoveDownBtn.setToolTip("Move the selected segment one place down (the order is the segment order). Disabled for the last row.")
+        self.segMoveDownBtn.connect('clicked(bool)', lambda checked=False: self._onMoveSegment(+1))
+        self.segMoveUpBtn.enabled = False
+        self.segMoveDownBtn.enabled = False
+        self.segTable.itemSelectionChanged.connect(
+            lambda: update_move_buttons(self.segTable, self.segMoveUpBtn, self.segMoveDownBtn))
         colorBtn = qt.QPushButton("Set color for selected...")
         colorBtn.connect('clicked(bool)', lambda checked=False: self._onPickSegmentColor())
         btnRow.addWidget(addBtn)
         btnRow.addWidget(removeBtn)
+        btnRow.addWidget(self.segMoveUpBtn)
+        btnRow.addWidget(self.segMoveDownBtn)
         btnRow.addWidget(colorBtn)
         btnRow.addStretch(1)
         layout.addLayout(btnRow)
@@ -116,6 +128,7 @@ class SegmentationTabMixin:
     def _onAddSegment(self):
         """Add one blank segment row."""
         self._addSegmentRow({})
+        update_move_buttons(self.segTable, self.segMoveUpBtn, self.segMoveDownBtn)
 
     def _onRemoveSegment(self):
         """Remove the selected segment row(s), keeping the parallel _segment_colors list in sync."""
@@ -125,6 +138,21 @@ class SegmentationTabMixin:
             if 0 <= r < len(self._segment_colors):
                 del self._segment_colors[r]
         self._markDirty()
+        update_move_buttons(self.segTable, self.segMoveUpBtn, self.segMoveDownBtn)
+
+    def _onMoveSegment(self, delta):
+        """Move the selected segment row up (-1) or down (+1): snapshot every row (unnamed ones too, with its color), swap two entries and rebuild through _addSegmentRow - rows hold widgets and the parallel _segment_colors list, so this keeps everything in step - then re-select the moved row."""
+        row = self.segTable.currentRow()
+        target = move_target(row, delta, self.segTable.rowCount)
+        if target is None:
+            return
+        rows = [self._segmentRowDict(r) for r in range(self.segTable.rowCount)]
+        rows[row], rows[target] = rows[target], rows[row]
+        self.segTable.setRowCount(0)
+        self._segment_colors = []
+        for d in rows:
+            self._addSegmentRow(d)
+        self.segTable.selectRow(target)
 
     def _onPickSegmentColor(self):
         """Open a color picker for the selected segment row and apply the chosen color."""
@@ -140,24 +168,23 @@ class SegmentationTabMixin:
             self._applySegmentColorDisplay(row)
             self._markDirty()
 
+    def _segmentRowDict(self, row):
+        """One segment row as a dict (name/source/csv_column/path_pattern/color), unnamed rows included."""
+        d = {"name": self.segTable.item(row, 0).text().strip(), "source": self.segTable.cellWidget(row, 1).currentText}
+        csv_col = self.segTable.item(row, 2).text().strip()
+        if csv_col:
+            d["csv_column"] = csv_col
+        pattern = self.segTable.item(row, 3).text().strip()
+        if pattern:
+            d["path_pattern"] = pattern
+        if row < len(self._segment_colors):
+            d["color"] = [round(c, 3) for c in self._segment_colors[row]]
+        return d
+
     def _readSegmentRows(self):
         """Read every named segment row into the final segmentation.segments[] list."""
-        segments = []
-        for row in range(self.segTable.rowCount):
-            name = self.segTable.item(row, 0).text().strip()
-            if not name:
-                continue
-            d = {"name": name, "source": self.segTable.cellWidget(row, 1).currentText}
-            csv_col = self.segTable.item(row, 2).text().strip()
-            if csv_col:
-                d["csv_column"] = csv_col
-            pattern = self.segTable.item(row, 3).text().strip()
-            if pattern:
-                d["path_pattern"] = pattern
-            if row < len(self._segment_colors):
-                d["color"] = [round(c, 3) for c in self._segment_colors[row]]
-            segments.append(d)
-        return segments
+        rows = (self._segmentRowDict(row) for row in range(self.segTable.rowCount))
+        return [d for d in rows if d["name"]]
 
     def _getSegmentNames(self):
         """Every non-empty Name in the Segmentation tab's segments table."""
@@ -203,3 +230,5 @@ class SegmentationTabMixin:
         self.segReferenceImageEdit.currentText = ""
         self.segTable.setRowCount(0)
         self._segment_colors = []
+        if hasattr(self, "segMoveUpBtn"):
+            update_move_buttons(self.segTable, self.segMoveUpBtn, self.segMoveDownBtn)
