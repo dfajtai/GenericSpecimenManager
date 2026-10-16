@@ -21,7 +21,7 @@ from Resources.core.config_model import (
 from Resources.core.logging_setup import logger
 from Resources.core.status import parse_status
 from Resources.definitions import IMAGES_READ_ONLY_BY_DEFAULT, KEEP_PREVIOUS_SPECIMEN_FILES
-from Resources.utils.segment_editor import activate_segment_editor
+from Resources.utils.segment_editor import activate_segment_editor, ensure_integer_labelmap
 from Resources.utils.volume_rendering import start_volume_rendering
 from Resources.utils.workspace import customize_workplace
 
@@ -44,6 +44,7 @@ class GenericSpecimen:
         self.markups_node = None
         self.volume_rendering_nodes = []
         self.volume_rendering_roi = []
+        self._layer_keeper = None   # SourceVolumeLayerKeeper while the Segment Editor is active for this specimen
 
         self.row_index = None
         self.status_col_index = None
@@ -209,6 +210,7 @@ class GenericSpecimen:
         dummy = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
         slicer.modules.volumes.logic().CreateLabelVolumeFromVolume(slicer.mrmlScene, dummy, reference_volume_node)
         dummy.GetImageData().GetPointData().GetScalars().Fill(0)
+        ensure_integer_labelmap(dummy)   # CreateLabelVolumeFromVolume may follow a float reference volume's voxel type
         img = slicer.modules.segmentations.logic().CreateOrientedImageDataFromVolumeNode(dummy)
         if color:
             segmentation_node.AddSegmentFromBinaryLabelmapRepresentation(img, name, color)
@@ -234,6 +236,8 @@ class GenericSpecimen:
             return
         try:
             mask_node = slicer.util.loadLabelVolume(path)
+            if ensure_integer_labelmap(mask_node):
+                logger.info(f"[GenericSpecimen] segment '{name}': label image '{path}' was not an integer type, converted to short")
             img = slicer.modules.segmentations.logic().CreateOrientedImageDataFromVolumeNode(mask_node)
             if color:
                 segmentation_node.AddSegmentFromBinaryLabelmapRepresentation(img, name, color)
@@ -423,8 +427,8 @@ class GenericSpecimen:
 
         if seg_cfg.enabled and self.cfg.segment_editor.is_configured():
             ref_name = self.cfg.segmentation.reference_image
-            activate_segment_editor(self.cfg.segment_editor, self.segmentation_node,
-                                    self.node_dict.get(ref_name) if ref_name else None)
+            self._layer_keeper = activate_segment_editor(self.cfg.segment_editor, self.segmentation_node,
+                                                         self.node_dict.get(ref_name) if ref_name else None)
 
 
     def save(self):
@@ -502,6 +506,9 @@ class GenericSpecimen:
         if slicer.mrmlScene.IsClosing():
             return
         logger.info(f"[GenericSpecimen] closing {self.label}")
+        if self._layer_keeper is not None:
+            self._layer_keeper.stop()
+            self._layer_keeper = None
         slicer.mrmlScene.StartState(slicer.mrmlScene.BatchProcessState)
         try:
             for vr_node in self.volume_rendering_nodes:

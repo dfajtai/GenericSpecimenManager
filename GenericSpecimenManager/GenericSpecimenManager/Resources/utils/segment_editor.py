@@ -14,9 +14,33 @@ brush keys with "Paint," / "Paint." - that attribute never existed, so nothing e
 
 import re
 
+import qt
 import slicer
+import vtk
 
 from Resources.core.logging_setup import logger
+
+
+_INTEGER_SCALAR_TYPES = ("VTK_CHAR", "VTK_SIGNED_CHAR", "VTK_UNSIGNED_CHAR", "VTK_SHORT", "VTK_UNSIGNED_SHORT",
+                         "VTK_INT", "VTK_UNSIGNED_INT", "VTK_LONG", "VTK_UNSIGNED_LONG", "VTK_LONG_LONG",
+                         "VTK_UNSIGNED_LONG_LONG", "VTK__INT64", "VTK_UNSIGNED__INT64")
+
+
+def ensure_integer_labelmap(volume_node):
+    """Make sure a label volume has an INTEGER voxel type before it becomes a segment. A float/double label image (some tools save masks as float) imports fine but its binary-labelmap representation cannot then be converted to a surface: 'Show 3D' only logs '[VTK] Convert: Source representation scalar type is not a valid integer type' and shows nothing. Casts in place to short (the voxel values of a mask are small whole numbers); returns True if a cast was needed."""
+    image = volume_node.GetImageData()
+    if image is None:
+        return False
+    integer_types = {getattr(vtk, n) for n in _INTEGER_SCALAR_TYPES if hasattr(vtk, n)}
+    if image.GetScalarType() in integer_types:
+        return False
+    caster = vtk.vtkImageCast()
+    caster.SetInputData(image)
+    caster.SetOutputScalarTypeToShort()
+    caster.ClampOverflowOn()
+    caster.Update()
+    volume_node.SetAndObserveImageData(caster.GetOutput())
+    return True
 
 
 def overwrite_value(overwrite_mode):
@@ -174,6 +198,77 @@ def configure_segment_editor_defaults(se_cfg):
                 f"active_effect_requested={se_cfg.active_effect}, patched_existing_node={existing_node is not None}")
 
 
+def _source_volume_of(editor_node):
+    """The editor node's current source volume node (Slicer 5.2+: GetSourceVolumeNode, older: GetMasterVolumeNode), or None."""
+    getter = getattr(editor_node, "GetSourceVolumeNode", None) or getattr(editor_node, "GetMasterVolumeNode", None)
+    return getter() if getter else None
+
+
+class SourceVolumeLayerKeeper:
+    """Keeps the slice views' BACKGROUND where the study config put it when the user picks another source volume in the Segment Editor, and makes the FOREGROUND follow the source volume instead.
+
+    Why: selecting a source volume makes Slicer put it into the slice views' background and switch the foreground off, so
+    switching between e.g. two images to segment also swapped away the reference image the user was looking at. Here the
+    background that was shown BEFORE the Segment Editor was set up is remembered; whenever the source volume changes it is
+    put back, the new source goes to the foreground, and the foreground opacity is left as it was. When the source volume
+    is the background itself (the usual reference image), the foreground that was shown before is put back instead.
+
+    The restore is queued with a zero-delay timer, because Slicer changes the layers in response to the same change (possibly after
+    our observer ran) - the timer lets that finish first. Behaviour in a live Slicer could not be tested from here."""
+
+    def __init__(self, editor_node, background_id, foreground_id, foreground_opacity):
+        """Observe `editor_node`; `background_id` / `foreground_id` / `foreground_opacity` are the layers to keep, taken before the source volume was first set."""
+        self._node = editor_node
+        self._kept = (background_id, foreground_id, foreground_opacity)
+        source = _source_volume_of(editor_node)
+        self._last_source_id = source.GetID() if source else None
+        self._observer_tag = editor_node.AddObserver(vtk.vtkCommand.ModifiedEvent, self._onNodeModified)
+
+    def stop(self):
+        """Stop observing (specimen closed). Safe to call twice."""
+        if self._observer_tag is not None:
+            try:
+                self._node.RemoveObserver(self._observer_tag)
+            except Exception:
+                pass
+            self._observer_tag = None
+
+    def _onNodeModified(self, _caller=None, _event=None):
+        """The editor node changed (it does for many reasons): act only if the source volume really is a different one now."""
+        source = _source_volume_of(self._node)
+        source_id = source.GetID() if source else None
+        if source_id == self._last_source_id:
+            return
+        self._last_source_id = source_id
+        qt.QTimer.singleShot(0, self.restoreLayers)
+
+    def restoreLayers(self):
+        """Put the kept background back and the source volume into the foreground (or the kept foreground, if the source is the background itself)."""
+        background_id, foreground_id, foreground_opacity = self._kept
+        source = _source_volume_of(self._node)
+        if source is None or not background_id:
+            return
+        background = slicer.mrmlScene.GetNodeByID(background_id)
+        if background is None:
+            return
+        if source.GetID() == background_id:
+            foreground = slicer.mrmlScene.GetNodeByID(foreground_id) if foreground_id else None
+        else:
+            foreground = source
+        kwargs = {"background": background, "foreground": foreground}
+        if foreground is not None and foreground_opacity:
+            kwargs["foregroundOpacity"] = foreground_opacity
+        slicer.util.setSliceViewerLayers(**kwargs)
+
+
+def _current_slice_layers():
+    """(background volume ID, foreground volume ID, foreground opacity) shown in the first slice view that has a background - the layers the study config set up."""
+    for composite in slicer.util.getNodesByClass("vtkMRMLSliceCompositeNode"):
+        if composite.GetBackgroundVolumeID():
+            return composite.GetBackgroundVolumeID(), composite.GetForegroundVolumeID(), composite.GetForegroundOpacity()
+    return None, None, None
+
+
 def activate_segment_editor(se_cfg, segmentation_node, reference_node=None):
     """Switch to the Segment Editor module with the given segmentation
     already selected and configured. Safe (unlike touching a bare template
@@ -183,6 +278,8 @@ def activate_segment_editor(se_cfg, segmentation_node, reference_node=None):
     """
     if segmentation_node is None:
         return
+
+    layers = _current_slice_layers()   # BEFORE the source volume is set: Slicer then swaps the layers around
 
     try:
         segmentEditorWidget = slicer.modules.segmenteditor.widgetRepresentation().self().editor
@@ -222,6 +319,10 @@ def activate_segment_editor(se_cfg, segmentation_node, reference_node=None):
     if se_cfg.active_effect:
         editorNode.SetActiveEffectName(se_cfg.active_effect)
 
+    keeper = SourceVolumeLayerKeeper(editorNode, *layers)
+    keeper.restoreLayers()   # the first source volume (the reference image) also disturbed the layers
+
     # Bring the module into view LAST, once everything above is already
     # configured, so the user never sees an unconfigured flash of it.
     slicer.util.selectModule("SegmentEditor")
+    return keeper

@@ -14,6 +14,8 @@ Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 - **Segment editor `editable_area`** (new): the Segment Editor's *Editable area* (`everywhere`, `inside_all_segments`, `inside_visible_segments`, `outside_all_segments`, `outside_visible_segments`) can be set in the config and the Config Editor's Segment editor tab; unset leaves Slicer's own setting (everywhere).
 
 - **Segmentation opacity**: `segmentation.opacity` (0-1) now actually sets the segmentation's display opacity (it was in the schema but never applied), and has a field on the Config Editor's Segmentation tab; empty = 1.
+- **Show 3D on float label images**: a label image (or an empty placeholder made from a float reference volume) with a float voxel type produced a binary labelmap that could not be converted to a surface (`Convert: Source representation scalar type is not a valid integer type`). Such images are now cast to an integer type before becoming segments.
+- **Segment Editor source volume**: switching the source volume no longer swaps the slice views' background away - the background stays as the config set it and the foreground follows the new source volume.
 
 ## 2026-09-25
 
