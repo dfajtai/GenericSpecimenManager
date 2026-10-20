@@ -11,7 +11,7 @@ import slicer
 
 from Resources.core import safe_io
 from Resources.core.logging_setup import logger
-from Resources.definitions import SPECIMEN_STATUS_COLORS, SpecimenStatus
+from Resources.definitions import CONFIG_EDITOR_OBJECT_NAME, SPECIMEN_STATUS_COLORS, SpecimenStatus
 from Resources.study.batch_processor import batch_exporter
 
 
@@ -42,6 +42,9 @@ class SpecimenActionsMixin:
 
     def _onSaveShortcut(self):
         """Ctrl+S while a specimen is loaded: same save as the button, without the popup (a status-bar note instead) - it can be pressed often."""
+        active_window = qt.QApplication.activeWindow()
+        if active_window is not None and active_window.objectName == CONFIG_EDITOR_OBJECT_NAME:
+            return   # the Config Editor has the focus: its own Ctrl+S saves the config
         if self.logic is not None and self.logic.hasActiveSpecimen:
             self._saveActiveSpecimen(inform_user=False)
             slicer.util.showStatusMessage(f"Saved {self.logic.active_specimen.label}", 3000)

@@ -4,9 +4,11 @@ Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 
 ## 2026-10-20
 
+- **Config Editor layout**: the Segmentation tab's Opacity field is full width; on the Images tab the Name column has a fixed width and the Color table column takes the spare width.
 - **Built-in colour maps**: an image's `color_table` can be `gnuplot2` or `inferno` (matplotlib maps; black at the low end, use the image's `threshold` to make values outside a range transparent).
 - **Color table dropdown** is grouped like Slicer's Colors module (Discrete, Shade, Tint, Continuous, FreeSurfer, PET, Cartilage MRI, Default labels from file) with separators and headings, and covers its whole documented collection.
 - **Specimen table (main GUI)**: column headers are shown as readable labels (`batch_id` -> `Batch id`; the real name is the tooltip), and the table uses the full width - spare width goes to the free-text columns with empty cells (e.g. notes).
+- **Config Editor**: Ctrl+S saves the config while the editor window is active (quietly - a status-bar note; the Save button still offers to reload). The main module's specimen save steps aside then.
 - **Batch export** offers to save and close an open specimen (it used to only log "please close the active specimen"), asks for confirmation first (it can take long) and a **progress bar** at the bottom of the module shows loading a specimen and the batch export.
 - **Closing the active specimen** is now asked about explicitly (Save and close / Close without saving / Cancel) when a config is loaded into the module or the study is re-initialized, instead of silently leaving the specimen open or only offering to save.
 - **Initialize Study re-reads the config file** (it used to read it only when none was loaded, so edits to a saved config never took effect on re-initializing). Hand-edited CSV paths are kept.

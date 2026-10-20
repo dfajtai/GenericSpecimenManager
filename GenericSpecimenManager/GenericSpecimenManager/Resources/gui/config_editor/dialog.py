@@ -9,9 +9,11 @@ import json
 import os
 
 import qt
+import slicer
 
 from Resources.core import safe_io
 from Resources.core.logging_setup import logger
+from Resources.definitions import CONFIG_EDITOR_OBJECT_NAME
 from Resources.gui.config_editor.batch_export_tab import BatchExportTabMixin
 from Resources.gui.config_editor.defaults_tab import DefaultsTabMixin
 from Resources.gui.config_editor.general_tab import GeneralTabMixin
@@ -43,6 +45,7 @@ class ConfigEditorDialog(qt.QDialog, GeneralTabMixin, BatchExportTabMixin, Image
         """Build the whole dialog and, if initial_path is given, load that config immediately (skipping the discard-changes prompt, since there's nothing to discard yet). on_saved, if given, is called as on_saved(path) after every successful Save - the main module passes its own "load this config into the active scene" logic here, so Save can offer to push the change live instead of requiring a manual re-browse there."""
         qt.QDialog.__init__(self, parent)
         self.setWindowTitle("Config Editor")
+        self.setObjectName(CONFIG_EDITOR_OBJECT_NAME)   # lets the main module's Ctrl+S see that this window has the focus
         self.resize(1200, 720)
 
         self._current_path = None
@@ -53,6 +56,12 @@ class ConfigEditorDialog(qt.QDialog, GeneralTabMixin, BatchExportTabMixin, Image
         self._on_saved = on_saved
 
         self._buildUi()
+
+        # Ctrl+S saves the config while THIS window is active (the main module's own Ctrl+S, which is application-wide, steps aside - see specimen_actions._onSaveShortcut)
+        self._saveShortcut = qt.QShortcut(qt.QKeySequence("Ctrl+S"), self)
+        self._saveShortcut.setContext(qt.Qt.WindowShortcut)
+        self._saveShortcut.connect('activated()', self._onSaveShortcut)
+        self._saveShortcut.connect('activatedAmbiguously()', self._onSaveShortcut)
 
         if initial_path and os.path.isfile(initial_path):
             self._loadFromFile(initial_path, ask_confirm=False)
@@ -296,7 +305,12 @@ class ConfigEditorDialog(qt.QDialog, GeneralTabMixin, BatchExportTabMixin, Image
         self._collectDefaults(cfg)
         return cfg
 
-    def _onSave(self):
+    def _onSaveShortcut(self):
+        """Ctrl+S: save quietly (a status-bar note instead of the 'Saved' / 'Reload now?' popups, since it can be pressed often); the Save button still offers to reload the config in the active module."""
+        if self._onSave(quiet=True):
+            slicer.util.showStatusMessage(f"Config saved: {self._current_path}", 3000)
+
+    def _onSave(self, quiet=False):
         """Validate + build + write the config.json, prompting for an output path first if none is set yet. Returns True on success, False on any failure (invalid JSON field, no preseg CSV, write error, ...) so callers (e.g. _confirmDiscard) know whether it's safe to proceed."""
         if not self.presegEdit.text.strip():
             qt.QMessageBox.warning(self, "Config Editor", "Select an images/preseg CSV first.")
@@ -333,6 +347,8 @@ class ConfigEditorDialog(qt.QDialog, GeneralTabMixin, BatchExportTabMixin, Image
         self._dirty = False
         self._updateTitle()
 
+        if quiet:
+            return True
         if self._on_saved:
             ret = qt.QMessageBox.question(
                 self, "Config Editor",

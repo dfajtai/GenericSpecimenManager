@@ -48,7 +48,6 @@ class SegmentationTabMixin:
         form.addRow("Output filename:", self.segOutputFilenameEdit)
         self.segOpacityEdit = qt.QLineEdit()
         self.segOpacityEdit.setPlaceholderText("1")
-        self.segOpacityEdit.setMaximumWidth(110)
         self.segOpacityEdit.setToolTip("Opacity of the whole segmentation in the slice and 3D views, 0-1 (segmentation.opacity). Empty = 1 (opaque).")
         form.addRow("Opacity:", self.segOpacityEdit)
         layout.addLayout(form)

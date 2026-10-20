@@ -33,7 +33,11 @@ SPECIMEN_TABLE_MIN_VISIBLE_ROWS = 3
 # ---- Config Editor GUI ----
 # Images tab - how many text lines tall the "Effective settings" box is (it scrolls for
 # more); the images table above gets all the remaining space.
+# objectName of the Config Editor window; the main module's Ctrl+S yields to it while that window is active
+CONFIG_EDITOR_OBJECT_NAME = "GenericSpecimenManagerConfigEditor"
 IMAGES_PREVIEW_VISIBLE_LINES = 4
+# Width in pixels of the Images table's Name column (the user can still drag it); the Color table column takes the remaining width
+IMAGES_NAME_COLUMN_WIDTH = 150
 
 # ---- Data safety (see core/safe_io.py) ----
 # database.csv is copied into a .backups folder next to it before it is overwritten:

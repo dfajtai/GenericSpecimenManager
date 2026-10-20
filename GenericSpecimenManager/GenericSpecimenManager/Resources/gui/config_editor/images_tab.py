@@ -11,6 +11,7 @@ import qt
 from Resources.definitions import (
     COLOR_TABLE_CHOICES,
     COLOR_TABLE_GROUPS,
+    IMAGES_NAME_COLUMN_WIDTH,
     IMAGES_PREVIEW_VISIBLE_LINES,
     ROLE_CHOICES,
     TYPE_CHOICES,
@@ -92,7 +93,10 @@ class ImagesTabMixin:
             hitem = self.imgTable.horizontalHeaderItem(col)
             if hitem:
                 hitem.setToolTip(tip)
-        self.imgTable.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
+        imgHeader = self.imgTable.horizontalHeader()
+        imgHeader.setSectionResizeMode(0, qt.QHeaderView.Interactive)   # Name: a modest fixed width, draggable
+        imgHeader.resizeSection(0, IMAGES_NAME_COLUMN_WIDTH)
+        imgHeader.setSectionResizeMode(7, qt.QHeaderView.Stretch)       # Color table: takes the spare width (names and ids can be long)
         self.imgTable.itemSelectionChanged.connect(self._onImageRowSelected)
         layout.addWidget(self.imgTable, 1)
 
