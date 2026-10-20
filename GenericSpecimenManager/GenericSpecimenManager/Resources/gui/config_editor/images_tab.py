@@ -10,12 +10,13 @@ import qt
 
 from Resources.definitions import (
     COLOR_TABLE_CHOICES,
+    COLOR_TABLE_GROUPS,
     IMAGES_PREVIEW_VISIBLE_LINES,
     ROLE_CHOICES,
     TYPE_CHOICES,
     UNSET,
 )
-from Resources.gui.config_editor.helpers import combo_value, move_target, set_combo_value, to_float, update_move_buttons
+from Resources.gui.config_editor.helpers import combo_value, fill_grouped_combo, move_target, set_combo_value, to_float, update_move_buttons
 from Resources.gui.config_editor.popups import ImageAdvancedPopup
 
 
@@ -255,7 +256,7 @@ class ImagesTabMixin:
 
         colorCombo = qt.QComboBox()
         colorCombo.setEditable(True)
-        colorCombo.addItems(COLOR_TABLE_CHOICES)
+        fill_grouped_combo(colorCombo, COLOR_TABLE_GROUPS)
         wanted_color = d.get("color_table", "")
         if wanted_color and wanted_color not in COLOR_TABLE_CHOICES:
             colorCombo.addItem(wanted_color)

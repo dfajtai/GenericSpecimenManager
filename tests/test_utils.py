@@ -100,6 +100,27 @@ class CamelCaseTest(unittest.TestCase):
         self.assertEqual(camel_to_label("InsideVisibleSegments"), "Inside visible segments")
 
 
+class ColormapTest(unittest.TestCase):
+    """The built-in colour maps (core/colormaps.py)."""
+
+    def test_gnuplot2_goes_from_black_to_white(self):
+        from Resources.core.colormaps import colormap_rgb
+        rgb = colormap_rgb("gnuplot2", 256)
+        self.assertEqual(len(rgb), 256)
+        self.assertEqual(rgb[0], (0.0, 0.0, 0.0))
+        self.assertEqual(rgb[-1], (1.0, 1.0, 1.0))
+
+    def test_inferno_starts_almost_black_and_values_are_valid(self):
+        from Resources.core.colormaps import colormap_rgb
+        rgb = colormap_rgb("inferno", 256)
+        self.assertLess(max(rgb[0]), 0.02)
+        self.assertTrue(all(0.0 <= c <= 1.0 for color in rgb for c in color))
+
+    def test_unknown_name(self):
+        from Resources.core.colormaps import colormap_rgb
+        self.assertIsNone(colormap_rgb("nope"))
+
+
 class MoveTargetTest(unittest.TestCase):
     """The Config Editor's Move up/down rule (images and segments tables)."""
 

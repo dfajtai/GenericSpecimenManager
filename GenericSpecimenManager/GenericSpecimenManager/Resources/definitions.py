@@ -127,13 +127,30 @@ OVERWRITE_LABELS = {"none": "Allow overlap", "all_segments": "Overwrite all segm
                     "visible_segments": "Overwrite visible segments"}
 BRUSH_SHAPE_LABELS = {"sphere": "Sphere", "circle": "Circle"}
 
-COLOR_TABLE_CHOICES = [
-    UNSET, "Grey", "Rainbow", "Random", "Labels", "GenericAnatomyColors",
-    "Warm1", "Warm2", "Warm3", "Cool1", "Cool2", "Cool3",
-    "PET-Heat", "PET-Rainbow", "PET-MaximumIntensityProjection", "PET-DICOM",
-    "vtkMRMLColorTableNodeRed", "vtkMRMLColorTableNodeGreen", "vtkMRMLColorTableNodeBlue",
-    "vtkMRMLColorTableNodeYellow", "vtkMRMLColorTableNodeCyan", "vtkMRMLColorTableNodeMagenta",
+# Slicer's built-in colour tables as the Colors module documents them (slicer.readthedocs.io/en/latest/user_guide/modules/colors.html),
+# grouped by its categories, plus this module's own matplotlib maps. The Config Editor's Color table dropdown shows the groups with
+# separators and headings; the config only ever holds the name. Red/Green/Blue/Yellow/Cyan/Magenta are given as node IDs because the
+# plain names are also the names of the slice views, so a lookup by name could return the wrong node. "File" and "User Generated"
+# tables (loaded or created at run time) are not listed - they can still be typed in, the dropdown is editable.
+COLOR_TABLE_GROUPS = [
+    ("Module (matplotlib)", ["gnuplot2", "inferno"]),
+    ("Discrete", ["Grey", "InvertedGrey", "Iron", "Rainbow", "ReverseRainbow", "FullRainbow", "Ocean", "Desert",
+                  "fMRI", "fMRIPA", "Random", "RandomIntegers", "Labels", "GenericAnatomyColors", "Generic Colors",
+                  "vtkMRMLColorTableNodeRed", "vtkMRMLColorTableNodeGreen", "vtkMRMLColorTableNodeBlue",
+                  "vtkMRMLColorTableNodeYellow", "vtkMRMLColorTableNodeCyan", "vtkMRMLColorTableNodeMagenta",
+                  "Warm1", "Warm2", "Warm3", "Cool1", "Cool2", "Cool3"]),
+    ("Shade", ["WarmShade1", "WarmShade2", "WarmShade3", "CoolShade1", "CoolShade2", "CoolShade3"]),
+    ("Tint", ["WarmTint1", "WarmTint2", "WarmTint3", "CoolTint1", "CoolTint2", "CoolTint3"]),
+    ("Continuous", ["RedGreenBlue"]),
+    ("FreeSurfer", ["Heat", "BlueRed", "RedBlue", "RedGreen", "GreenRed", "FreeSurferLabels"]),
+    ("PET", ["PET-Heat", "PET-Rainbow", "PET-Rainbow2", "PET-MaximumIntensityProjection", "PET-DICOM", "PET-HotMetalBlue"]),
+    ("Cartilage MRI", ["dGEMRIC-1.5T", "dGEMRIC-3T"]),
+    ("Default labels from file", ["ColdToHotRainbow", "HotToColdRainbow", "PelvisColor", "Slicer3_2010_Brain_Labels",
+                                  "64Color-Nonsemantic", "MediumChartColors", "DarkBrightChartColors", "Slicer3_2010_LabelColors",
+                                  "AbdomenColors", "SPL-BrainAtlas-ColorFile", "SPL-BrainAtlas-2012-ColorFile",
+                                  "LightPaleChartColors", "SPL-BrainAtlas-2009-ColorFile"]),
 ]
+COLOR_TABLE_CHOICES = [UNSET] + [name for _group, names in COLOR_TABLE_GROUPS for name in names]
 
 VR_PRESET_CHOICES = [
     UNSET, "CT-AAA", "CT-AAA2", "CT-Air", "CT-Bone", "CT-Bones", "CT-Cardiac", "CT-Cardiac2", "CT-Cardiac3",

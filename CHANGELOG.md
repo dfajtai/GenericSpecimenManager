@@ -2,6 +2,11 @@
 
 Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 
+## 2026-10-20
+
+- **Built-in colour maps**: an image's `color_table` can be `gnuplot2` or `inferno` (matplotlib maps; black at the low end, use the image's `threshold` to make values outside a range transparent).
+- **Color table dropdown** is grouped like Slicer's Colors module (Discrete, Shade, Tint, Continuous, FreeSurfer, PET, Cartilage MRI, Default labels from file) with separators and headings, and covers its whole documented collection.
+
 ## 2026-10-16
 
 - **Config Editor, Images -> Edit advanced...**: the popup's OK/Cancel buttons could be pushed off-screen, so the entered values could not be confirmed or stored. The form now scrolls and the buttons stay pinned at the bottom.

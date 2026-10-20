@@ -57,7 +57,7 @@ for exactly how these resolve, group, and what `{index}` does).
 
 **Images** - a **Quick add from preseg columns...** popup (column name + Add + Labelmap checkbox); the main
 table (name, csv_column, type, role, required, **Preset**
-dropdown populated live from the Presets JSON, **Color table** dropdown -
+dropdown populated live from the Presets JSON, **Color table** dropdown (also offers the module's own `gnuplot2` and `inferno`, see the config reference) -
 curated + freely editable, opacity); "Edit advanced..." popup (path_pattern/window_level/
 threshold/interpolate); a live **Effective settings** preview for the
 selected row; **Move up** / **Move down** reorder the selected row (the order is the load order; a button is disabled when the row is already first/last). A **Default path pattern** field above the table

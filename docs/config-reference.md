@@ -25,7 +25,7 @@ The complete `config.json` schema (1:1 with `core/config_model.py`) and a key re
     { "name": "background", "csv_column": "background", "role": "background",
       "path_pattern": "{ID}/{name}.nii.gz",     // only used if csv_column resolves to nothing
       "preset": "ct_default", "type": "volume", "required": true,
-      "opacity": 1.0, "color_table": "Grey", "interpolate": true,
+      "opacity": 1.0, "color_table": "Grey", "interpolate": true,   // color_table: a Slicer table name/ID, or the built-in "gnuplot2" / "inferno" (matplotlib maps, black at the low end; values outside "threshold" stay transparent)
       "window_level": {"min":-150,"max":700},   // OR {"auto":true} OR {"window":..,"level":..}
       "threshold": {"min":1,"max":300,"apply":true} },
 

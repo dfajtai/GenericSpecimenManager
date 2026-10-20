@@ -19,6 +19,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/UI/${MODULE_NAME}.ui
   Resources/__init__.py
   Resources/core/__init__.py
+  Resources/core/colormaps.py
   Resources/core/config_model.py
   Resources/core/logging_setup.py
   Resources/core/pattern_check.py
@@ -52,6 +53,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/study/logic.py
   Resources/study/specimen.py
   Resources/utils/__init__.py
+  Resources/utils/color_tables.py
   Resources/utils/config_location.py
   Resources/utils/segment_editor.py
   Resources/utils/slicer_ui.py

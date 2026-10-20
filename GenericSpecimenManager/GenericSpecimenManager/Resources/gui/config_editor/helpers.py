@@ -6,6 +6,8 @@ Small helpers shared by the Config Editor's tabs (CSV headers, list/float parsin
 
 import csv
 
+import qt
+
 from Resources.definitions import UNSET
 
 
@@ -71,6 +73,18 @@ def labeled_combo_value(combo, labels):
         if label == text:
             return value
     return ""
+
+
+def fill_grouped_combo(combo, groups):
+    """Fill a dropdown with '(unset)' followed by `groups` ([(heading, [names]), ...]): each group gets a separator line and a greyed-out, unselectable heading, then its names. The names are the items' text, so combo_value()/set_combo_value() keep working."""
+    combo.addItem(UNSET)
+    for heading, names in groups:
+        combo.insertSeparator(combo.count)
+        combo.addItem(f"-- {heading} --")
+        header = combo.model().item(combo.count - 1)
+        if header is not None:
+            header.setFlags(qt.Qt.NoItemFlags)   # shown, but cannot be picked
+        combo.addItems(names)
 
 
 def move_target(row, delta, count):

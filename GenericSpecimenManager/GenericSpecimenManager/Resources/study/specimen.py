@@ -21,6 +21,7 @@ from Resources.core.config_model import (
 from Resources.core.logging_setup import logger
 from Resources.core.status import parse_status
 from Resources.definitions import IMAGES_READ_ONLY_BY_DEFAULT, KEEP_PREVIOUS_SPECIMEN_FILES
+from Resources.utils.color_tables import builtin_color_node
 from Resources.utils.segment_editor import activate_segment_editor, ensure_integer_labelmap
 from Resources.utils.volume_rendering import start_volume_rendering
 from Resources.utils.workspace import customize_workplace
@@ -151,7 +152,10 @@ class GenericSpecimen:
         return self._to_abs(rel)
 
     def _resolve_color_node(self, name_or_id):
-        """Look up a Slicer color table node by ID first, then by name - returns None if neither resolves (caller just skips applying it)."""
+        """Look up a color table node: one of the module's own colour maps (gnuplot2, inferno) first, then Slicer's by ID, then by name - returns None if none resolves (caller just skips applying it)."""
+        builtin = builtin_color_node(name_or_id)
+        if builtin is not None:
+            return builtin
         try:
             node = slicer.mrmlScene.GetNodeByID(name_or_id)
             if node:
