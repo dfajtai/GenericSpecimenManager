@@ -24,7 +24,7 @@ from Resources.gui.specimen_table import SpecimenTableMixin
 from Resources.gui.study_setup import StudySetupMixin
 from Resources.utils.config_location import default_config_dir
 from Resources.study.logic import GenericSpecimenManagerLogic
-from Resources.utils.slicer_ui import SaveShortcut, set_help_section_visible
+from Resources.utils.slicer_ui import ProgressReporter, SaveShortcut, set_help_section_visible
 
 
 # (label, anchor) pairs of Resources/Html/module_help_cheatsheet.html, for the Help popup's section-jump combo
@@ -63,6 +63,7 @@ class GenericSpecimenManagerWidgetBase(SpecimenTableMixin, AnnotationMixin, Stud
         self._annotationActors = []              # (view, renderer, vtkTextActor) of the specimen annotation, if shown
         self._studyInitialized = False           # True only after a fully successful Initialize Study
         self._active_specimen_observed = None    # the GenericSpecimen currently wired to _onActiveSpecimenNodeModified, if any
+        self._progress = None                    # utils/slicer_ui.ProgressReporter on the bar at the bottom, created in setup()
         self._saveShortcut = None                # the Ctrl+S shortcut (utils/slicer_ui.SaveShortcut), created in setup()
 
     def setup(self):
@@ -71,6 +72,10 @@ class GenericSpecimenManagerWidgetBase(SpecimenTableMixin, AnnotationMixin, Stud
         uiWidget = slicer.util.loadUI(self.resourcePath(self.UI_RESOURCE))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
+        # progress bar at the very bottom of the module, hidden until a specimen load or a batch export runs
+        self._progressBar = qt.QProgressBar()
+        self.layout.addWidget(self._progressBar)
+        self._progress = ProgressReporter(self._progressBar)
         self._uiWidget = uiWidget
         uiWidget.setMRMLScene(slicer.mrmlScene)
 

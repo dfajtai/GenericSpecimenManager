@@ -22,6 +22,7 @@ from Resources.core.logging_setup import logger
 from Resources.core.status import parse_status
 from Resources.definitions import IMAGES_READ_ONLY_BY_DEFAULT, KEEP_PREVIOUS_SPECIMEN_FILES
 from Resources.utils.color_tables import builtin_color_node
+from Resources.utils.slicer_ui import NullProgress
 from Resources.utils.segment_editor import activate_segment_editor, ensure_integer_labelmap
 from Resources.utils.volume_rendering import start_volume_rendering
 from Resources.utils.workspace import customize_workplace
@@ -354,7 +355,17 @@ class GenericSpecimen:
         if markups_cfg.writable if markups_cfg.writable is not None else True:
             self.writeable["__markups__"] = m_path
 
-    def load(self):
+    def load(self, progress=None):
+        """Load this specimen (see _load for what that means), reporting progress to `progress` (a utils/slicer_ui.ProgressReporter; None = silently): one step per configured image plus segmentation, markups and the workspace/finishing setup."""
+        progress = progress or NullProgress()
+        entries = list(self._expand_image_entries())
+        progress.start(len(entries) + 3, f"Loading {self.label}")
+        try:
+            self._load(entries, progress)
+        finally:
+            progress.finish()
+
+    def _load(self, entries, progress):
         """Load everything configured for this specimen, in order: images (background/label/foreground slice-view layers applied once, after the loop), segmentation, markups, workspace setup (crosshair/blanket window-level/segment opacity/default Four-Up layout), volume rendering, then - if segment_editor is configured - hand off to the Segment Editor. Prints an itemized table of what was actually loaded (and what was skipped, with why) at the end."""
         self.loaded_own_data = False
         background_node = None
@@ -362,9 +373,10 @@ class GenericSpecimen:
         foreground_node, foreground_opacity = None, None
         load_rows = []
 
-        for raw_img_cfg in self._expand_image_entries():
+        for raw_img_cfg in entries:
             img_cfg = self._resolve_image_cfg(raw_img_cfg)
             name = img_cfg.name
+            progress.step(f"Loading {self.label}: image '{name}'")
             required = img_cfg.required or False
             itype = img_cfg.type or "volume"
             try:
@@ -408,6 +420,7 @@ class GenericSpecimen:
             slicer.util.setSliceViewerLayers(**slice_kwargs)
 
         seg_cfg = self.cfg.segmentation
+        progress.step(f"Loading {self.label}: segmentation")
         if seg_cfg.enabled:
             seg_on_disk = os.path.exists(self.segmentation_out_path())
             self._load_segmentation(seg_cfg)
@@ -415,6 +428,7 @@ class GenericSpecimen:
             load_rows.append(("segmentation", "-", "-", seg_status, self.segmentation_out_path()))
 
         markups_cfg = self.cfg.markups
+        progress.step(f"Loading {self.label}: markups")
         if markups_cfg.enabled:
             self._load_markups(markups_cfg)
             load_rows.append(("markups", "-", "-", self.markups_source if self.markups_node else "skipped", self.markups_out_path()))
@@ -422,6 +436,7 @@ class GenericSpecimen:
         logger.info(f"[GenericSpecimen] loaded {self.label}: {len(load_rows)} item(s) -> {self.out_dir}")
         self._print_table(f"loaded {self.label}", ["item", "type", "role", "status", "path"], load_rows)
 
+        progress.step(f"Loading {self.label}: setting up the workspace")
         customize_workplace(self.cfg, self.segmentation_node)
 
         vr_entries = [e for e in self.cfg.volume_rendering if e.enabled]

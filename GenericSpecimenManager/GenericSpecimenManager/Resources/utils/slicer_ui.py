@@ -64,3 +64,64 @@ class SaveShortcut:
         for action, sequence in self._displaced:
             action.setShortcut(sequence)
         self._displaced = []
+
+
+class NullProgress:
+    """Progress reporter that shows nothing - the default when a caller has no progress bar (console use, tests)."""
+
+    def start(self, total, text=""):
+        """No-op."""
+
+    def step(self, text=None):
+        """No-op."""
+
+    def message(self, text):
+        """No-op."""
+
+    def finish(self):
+        """No-op."""
+
+
+class ProgressReporter:
+    """Drives the progress bar at the bottom of the module for long jobs (loading a specimen, batch export).
+
+    start(total, text) shows the bar, step(text) counts one unit done (or starting) and shows `text`, message(text) only changes the
+    text, finish() hides the bar. The jobs run on the GUI thread, so every update lets Qt repaint - but with user input excluded,
+    so a click on another button cannot start a second job in the middle of this one."""
+
+    def __init__(self, bar):
+        """`bar` is the QProgressBar (hidden until start())."""
+        self._bar = bar
+        self._text = ""
+        bar.visible = False
+
+    def _show(self):
+        """Put the current text and counts on the bar and let Qt repaint it."""
+        self._bar.setFormat(f"{self._text}  (%v / %m)" if self._text else "%v / %m")
+        qt.QApplication.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
+
+    def start(self, total, text=""):
+        """Show the bar for a job of `total` steps."""
+        self._bar.minimum = 0
+        self._bar.maximum = max(int(total), 1)
+        self._bar.value = 0
+        self._text = text
+        self._bar.visible = True
+        self._show()
+
+    def step(self, text=None):
+        """One more step; shows `text` if given."""
+        if text is not None:
+            self._text = text
+        self._bar.value = min(self._bar.value + 1, self._bar.maximum)
+        self._show()
+
+    def message(self, text):
+        """Change the text without counting a step."""
+        self._text = text
+        self._show()
+
+    def finish(self):
+        """Hide the bar."""
+        self._bar.visible = False
+        qt.QApplication.processEvents(qt.QEventLoop.ExcludeUserInputEvents)

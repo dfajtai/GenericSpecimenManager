@@ -13,6 +13,7 @@ import slicer
 import vtk
 
 from Resources.core.logging_setup import logger
+from Resources.utils.slicer_ui import NullProgress
 from Resources.definitions import DEFAULT_STATS_METRICS, SpecimenStatus, SPECIMEN_STATUS_LABELS
 
 
@@ -50,8 +51,10 @@ class BatchProcessor:
     to different paths (because the pattern references a column whose
     value differs) naturally end up in separate files instead."""
 
-    def __init__(self, logic):
+    def __init__(self, logic, progress=None):
+        """`progress`: optional utils/slicer_ui.ProgressReporter (the module's progress bar); None = no progress display."""
         self.logic = logic
+        self._progress = progress or NullProgress()
         self.cfg = logic.cfg
         self.be_cfg = logic.cfg.batch_export
         self.stats_rows = []       # populated during run() if compute_stats is on
@@ -129,22 +132,28 @@ class BatchProcessor:
         def _restore_warning_display():
             vtk.vtkObject.SetGlobalWarningDisplay(previous_warning_display)
 
+        self._progress.start(len(finished) + 1, "Batch export")   # +1: writing the report files at the end
         try:
             for key, specimen in self.logic.specimens.items():
                 if specimen.status != SpecimenStatus.FINISHED:
                     continue
+                self._progress.message(f"Batch export: {specimen.label}")
                 slicer.mrmlScene.StartState(slicer.mrmlScene.BatchProcessState)
                 try:
                     self._process_one(specimen, key, geo_ref_name, stats_ref_names, need_ref_image)
                 finally:
                     slicer.mrmlScene.EndState(slicer.mrmlScene.BatchProcessState)
                 gc.collect()   # drop any lingering Python-side references to just-removed nodes
+                self._progress.step()
 
+            self._progress.message("Batch export: writing the reports")
             if be_cfg.compute_stats:
                 self._write_stats_csv()
             if be_cfg.export_markups and be_cfg.markups_report:
                 self._write_markups_report()
+            self._progress.step()
         finally:
+            self._progress.finish()
             try:
                 import qt
                 qt.QTimer.singleShot(1000, _restore_warning_display)
@@ -543,7 +552,7 @@ class BatchProcessor:
         self.logic.show_key_value_dialog("Batch export finished", dialog_rows)
 
 
-def batch_exporter(logic):
+def batch_exporter(logic, progress=None):
     """Standalone entry point, kept for Python-console convenience and
-    backward compatibility - just runs BatchProcessor(logic).run()."""
-    BatchProcessor(logic).run()
+    backward compatibility - just runs BatchProcessor(logic, progress).run()."""
+    BatchProcessor(logic, progress).run()

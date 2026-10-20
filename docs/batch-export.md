@@ -11,7 +11,7 @@ it; its own `output_dir_pattern`/`stats_output_path`/`markups_output_path`
 can reference any database.csv column directly (including this one, by
 name).
 
-A single **Batch Export** button (under Initialize Study, shown once a study is initialized and the config enables batch export) runs
+A single **Batch Export** button (under Initialize Study, shown once a study is initialized and the config enables batch export) first asks for confirmation (how many finished specimens, what will be produced - it can take long), then shows a progress bar at the bottom of the module (one step per specimen, plus one for the report files) while it runs
 [`BatchProcessor`](../GenericSpecimenManager/GenericSpecimenManager/Resources/study/batch_processor.py)
 against every `finished` specimen (it reuses the already-initialized specimen list - it doesn't re-initialize the study - and stops with a message listing the status counts if none is `finished`), driven entirely by `cfg.batch_export` -
 configured on its own **Batch export** Config Editor tab (it outgrew a

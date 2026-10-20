@@ -23,7 +23,7 @@ class SpecimenActionsMixin:
         try:
             if not self.tbl_selected_key:
                 return
-            self.logic.load_specimen(self.tbl_selected_key)
+            self.logic.load_specimen(self.tbl_selected_key, self._progress)
             specimen = self.logic.active_specimen
             if specimen is not None and specimen.loaded_own_data:
                 self._setSpecimenStatus(specimen, SpecimenStatus.IN_PROGRESS, only_raise=True)
@@ -218,5 +218,19 @@ class SpecimenActionsMixin:
             traceback.print_exc()
 
     def onBtnBatchExport(self):
-        """Run the standalone batch_exporter() against this widget's Logic."""
-        batch_exporter(self.logic)
+        """If a specimen is open, offer to save and close it first (a dialog, like re-initializing); then ask for confirmation (a batch export can take a long time) and run the batch exporter against this widget's Logic with the progress bar. With no finished specimen the exporter itself explains that, so no question is asked then."""
+        if not self._confirmCloseActiveSpecimen("Batch export"):   # the export works on its own copies and needs no specimen open; used to be only a log line
+            return
+        finished = [sp for sp in self.logic.specimens.values() if sp.status == SpecimenStatus.FINISHED]
+        if finished:
+            be = self.logic.cfg.batch_export
+            parts = [text for text, on in (("segment label maps", be.export_segments), ("markups", be.export_markups),
+                                           ("segment statistics", be.compute_stats)) if on]
+            answer = qt.QMessageBox.question(
+                slicer.util.mainWindow(), "Batch export",
+                f"Export {len(finished)} finished specimen(s)?\n\nWill produce: {', '.join(parts) or 'nothing (no export part is switched on)'}.\n"
+                "This can take a long time, and Slicer stays busy until it is done.",
+                qt.QMessageBox.Yes | qt.QMessageBox.No, qt.QMessageBox.No)
+            if answer != qt.QMessageBox.Yes:
+                return
+        batch_exporter(self.logic, self._progress)

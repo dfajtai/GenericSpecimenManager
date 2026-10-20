@@ -193,15 +193,15 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
 
         dlg.exec_()
 
-    def load_specimen(self, key):
-        """Load the specimen for `key` and make it the active one - refuses (with an info popup) if a specimen is already active."""
+    def load_specimen(self, key, progress=None):
+        """Load the specimen for `key` and make it the active one - refuses (with an info popup) if a specimen is already active. `progress` (optional) is a utils/slicer_ui.ProgressReporter for the progress bar."""
         target = self.specimens.get(key)
         if isinstance(self.active_specimen, GenericSpecimen):
             self.info("A specimen has already been loaded.")
             return False
         if target is None:
             raise ValueError(f"Specimen {key} not initialized")
-        target.load()
+        target.load(progress)
         self.active_specimen = target
         return True
 
