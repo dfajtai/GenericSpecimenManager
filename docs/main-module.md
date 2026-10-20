@@ -12,7 +12,7 @@ table, Load / Reset / Save / Close) and a collapsed **Help** block.
 
 Each specimen has a status, stored in the `status_column` of `database.csv` as an integer
 (`0` untouched, `1` in progress, `2` to review, `3` finished; values live in `definitions.py`).
-The table always shows it as its last column, headed `Status`, as a dropdown that also colors the
+Column headers are shown as readable labels (`batch_id` -> `Batch id`, `specimenID` -> `Specimen ID`; the real `database.csv` name is in the header's tooltip), every column is as wide as its content, and the spare width goes to the free-text columns that have empty cells (e.g. notes), or to the last free-text column if there is none. The table always shows the status as its last column, headed `Status`, as a dropdown that also colors the
 row (white / light blue / pale yellow / darker green).
 
 - **Automatic:** a specimen goes `0` → `1` when it loads from its own saved file or is saved. This

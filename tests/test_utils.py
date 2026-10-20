@@ -121,6 +121,19 @@ class ColormapTest(unittest.TestCase):
         self.assertIsNone(colormap_rgb("nope"))
 
 
+class ColumnLabelTest(unittest.TestCase):
+    """database.csv column names as readable table headers."""
+
+    def test_labels(self):
+        from Resources.core.naming import column_label
+        self.assertEqual(column_label("batch_id"), "Batch id")
+        self.assertEqual(column_label("specimenID"), "Specimen ID")
+        self.assertEqual(column_label("sampleName"), "Sample name")
+        self.assertEqual(column_label("ID"), "ID")
+        self.assertEqual(column_label("done"), "Done")
+        self.assertEqual(column_label("left-femur length"), "Left femur length")
+
+
 class MoveTargetTest(unittest.TestCase):
     """The Config Editor's Move up/down rule (images and segments tables)."""
 

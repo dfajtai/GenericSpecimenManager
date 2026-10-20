@@ -19,6 +19,7 @@ import slicer
 import vtk
 
 from Resources.core.logging_setup import logger
+from Resources.core.naming import camel_to_label, camel_to_snake  # noqa: F401  (camel_to_label is re-exported for the tests)
 
 
 _INTEGER_SCALAR_TYPES = ("VTK_CHAR", "VTK_SIGNED_CHAR", "VTK_UNSIGNED_CHAR", "VTK_SHORT", "VTK_UNSIGNED_SHORT",
@@ -57,17 +58,6 @@ def overwrite_value(overwrite_mode):
 
 _MASK_PREFIX = "EditAllowed"
 _UNSUPPORTED_MASK_MODES = ("InsideSingleSegment",)   # needs a segment ID, which a study-level config cannot know
-
-
-def camel_to_snake(text):
-    """'InsideAllSegments' -> 'inside_all_segments' (the form used for the config value)."""
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", text).lower()
-
-
-def camel_to_label(text):
-    """'InsideAllSegments' -> 'Inside all segments' (first word capitalised, rest lower case - the wording of Slicer's own GUI)."""
-    words = camel_to_snake(text).replace("_", " ")
-    return words[:1].upper() + words[1:]
 
 
 def mask_mode_names():

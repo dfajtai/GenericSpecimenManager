@@ -22,6 +22,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/core/colormaps.py
   Resources/core/config_model.py
   Resources/core/logging_setup.py
+  Resources/core/naming.py
   Resources/core/pattern_check.py
   Resources/core/safe_io.py
   Resources/core/status.py

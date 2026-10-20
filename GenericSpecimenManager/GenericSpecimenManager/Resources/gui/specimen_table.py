@@ -10,6 +10,7 @@ import slicer
 import vtk
 
 from Resources.core.logging_setup import logger
+from Resources.core.naming import column_label
 from Resources.definitions import (
     SPECIMEN_STATUS_COLORS,
     SPECIMEN_STATUS_LABELS,
@@ -69,6 +70,7 @@ class SpecimenTableMixin:
         self.table_lock = True
         try:
             status_col = cfg.status_column
+            text_columns, empty_text_columns = set(), set()   # indexes of free-text columns / of those with at least one empty cell
             factor_by_col = {fc.column: fc for fc in cfg.factor_columns}
             for i, key in enumerate(keys):
                 specimen = self.logic.specimens[key]
@@ -100,18 +102,40 @@ class SpecimenTableMixin:
                         combo.currentTextChanged.connect(lambda text, r=i, cn=col: self._onFactorMultilevelChanged(r, cn, text))
                         tbl.setCellWidget(i, j, combo)
                     else:
-                        tbl.setItem(i, j, qt.QTableWidgetItem(specimen.db_info.get(col, "")))
+                        text_value = specimen.db_info.get(col, "")
+                        tbl.setItem(i, j, qt.QTableWidgetItem(text_value))
+                        text_columns.add(j)
+                        if not text_value:
+                            empty_text_columns.add(j)
                 self._applyStatusRowStyle(i, specimen.status)
         finally:
             self.table_lock = False
 
-        tbl.setHorizontalHeaderLabels(["Status" if c == cfg.status_column else c for c in columns])
-        tbl.resizeColumnsToContents()
+        tbl.setHorizontalHeaderLabels(["Status" if c == cfg.status_column else column_label(c) for c in columns])
+        for j, col in enumerate(columns):   # the header shows a readable label; the real database.csv name is in its tooltip
+            header_item = tbl.horizontalHeaderItem(j)
+            if header_item is not None:
+                header_item.setToolTip(col)
+        self._fitSpecimenTableColumns(len(columns), text_columns, empty_text_columns)
         if self.tbl_selected_key in keys:   # a redraw (filter change etc.) keeps the selected specimen selected
             tbl.selectRow(keys.index(self.tbl_selected_key))
         self._fitSpecimenTableHeight()
         self._refreshSpecimenStatusLabels()
         self._parameterNode.EndModify(wasModified)
+
+    def _fitSpecimenTableColumns(self, column_count, text_columns, empty_text_columns):
+        """Use the table's full width: every column is as wide as its content, and the spare width goes to the free-text columns that have empty cells (the ones people type into, e.g. notes); when there is none, to the last free-text column, or the last column if there is no free-text one."""
+        header = self.ui.tblSpecimens.horizontalHeader()
+        for j in range(column_count):
+            header.setSectionResizeMode(j, qt.QHeaderView.ResizeToContents)
+        if empty_text_columns:
+            stretch = sorted(empty_text_columns)
+        elif text_columns:
+            stretch = [max(text_columns)]
+        else:
+            stretch = [column_count - 1]
+        for j in stretch:
+            header.setSectionResizeMode(j, qt.QHeaderView.Stretch)
 
     @staticmethod
     def _qtValue(v):
