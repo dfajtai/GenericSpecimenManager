@@ -8,6 +8,8 @@ Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 - **Color table dropdown** is grouped like Slicer's Colors module (Discrete, Shade, Tint, Continuous, FreeSurfer, PET, Cartilage MRI, Default labels from file) with separators and headings, and covers its whole documented collection.
 - **Specimen table (main GUI)**: column headers are shown as readable labels (`batch_id` -> `Batch id`; the real name is the tooltip), and the table uses the full width - spare width goes to the free-text columns with empty cells (e.g. notes).
 - **Batch export** offers to save and close an open specimen (it used to only log "please close the active specimen"), asks for confirmation first (it can take long) and a **progress bar** at the bottom of the module shows loading a specimen and the batch export.
+- **Closing the active specimen** is now asked about explicitly (Save and close / Close without saving / Cancel) when a config is loaded into the module or the study is re-initialized, instead of silently leaving the specimen open or only offering to save.
+- **Initialize Study re-reads the config file** (it used to read it only when none was loaded, so edits to a saved config never took effect on re-initializing). Hand-edited CSV paths are kept.
 
 ## 2026-10-16
 

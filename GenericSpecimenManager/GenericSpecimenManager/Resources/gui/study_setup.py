@@ -31,6 +31,8 @@ class StudySetupMixin:
 
     def _loadConfigIntoScene(self, path):
         """Load `path` into this module's active Logic/parameter node and pre-fill the Database/Preseg CSV path fields from it - exactly what onBtnSelectConfig does after a browse, but reusable with an already-known path (e.g. the Config Editor's "reload after save" prompt, which calls this instead of making the user browse again)."""
+        if not self._confirmCloseActiveSpecimen("Loading another config"):
+            return
         self._parameterNode.SetParameter("ConfigPath", path)
         remember_config_path(path)
         try:
@@ -190,38 +192,52 @@ class StudySetupMixin:
 
         return None
 
+    def _confirmCloseActiveSpecimen(self, action):
+        """If a specimen is open, say plainly that `action` (e.g. 'Reloading the config') will CLOSE it - its unsaved work and the open session are gone - and offer to save it and the database CSV first. Returns True to go on (nothing was open, or the specimen has been saved and/or closed, with the specimen-related GUI refreshed), False if the user cancelled."""
+        if not self.logic.hasActiveSpecimen:
+            return True
+        label = self.logic.active_specimen.label
+        box = qt.QMessageBox(slicer.util.mainWindow())
+        box.setIcon(qt.QMessageBox.Warning)
+        box.setWindowTitle("Close the active specimen?")
+        box.setText(f"Specimen '{label}' is open. {action} closes it - the open session and any unsaved work on it are lost, "
+                    "and unsaved database table edits can be lost or end up misattributed.\n\n"
+                    "Save the specimen and the database CSV before closing it?")
+        saveBtn = box.addButton("Save and close", qt.QMessageBox.AcceptRole)
+        discardBtn = box.addButton("Close without saving", qt.QMessageBox.DestructiveRole)
+        cancelBtn = box.addButton("Cancel", qt.QMessageBox.RejectRole)
+        box.setDefaultButton(cancelBtn)
+        box.exec_()
+        clicked = box.clickedButton()
+        if clicked is None or clicked == cancelBtn:
+            return False
+        if clicked == saveBtn:
+            try:
+                self.logic.save_active_specimen(inform_user=False)
+                self.logic.save_db(inform_user=False)
+            except Exception as e:
+                slicer.util.errorDisplay("Failed to save before closing the specimen: " + str(e))
+                return False
+        self.logic.close_active_specimen(no_question=True)
+        self._detachActiveSpecimenObservers()
+        self._updatePostInitButtonStates()
+        self._refreshSpecimenStatusLabels()
+        self._refreshSpecimenAnnotation()
+        return True
+
     def onBtnInitializeStudy(self):
         """(Re)build the specimen list: if a specimen is already open, warn and offer to save first; validate the config/CSV paths (folder-vs-file, then a pure-Python CSV/key-column sanity check) before ever calling Slicer's table loader; finally call Logic.initializeStudy() and refresh the table/batch combo."""
-        if self.logic.hasActiveSpecimen:
-            ret = qt.QMessageBox.warning(
-                slicer.util.mainWindow(), "Re-initialize study",
-                "A specimen is currently open. Re-initializing the study reloads the "
-                "database/preseg tables and rebuilds the specimen list - any unsaved "
-                "work on the open specimen (and unsaved database table edits) can be "
-                "lost or end up misattributed if you continue without saving first.\n\n"
-                "Save the active specimen and the database CSV before continuing?",
-                qt.QMessageBox.Save | qt.QMessageBox.Discard | qt.QMessageBox.Cancel)
-            if ret == qt.QMessageBox.Cancel:
-                return
-            if ret == qt.QMessageBox.Save:
-                try:
-                    self.logic.save_active_specimen(inform_user=False)
-                    self.logic.save_db()
-                except Exception as e:
-                    slicer.util.errorDisplay("Failed to save before re-initializing: " + str(e))
-                    return
-            self.logic.close_active_specimen(no_question=True)
-            self._detachActiveSpecimenObservers()
-            self._updatePostInitButtonStates()
-            self._refreshSpecimenStatusLabels()
-            self._refreshSpecimenAnnotation()
+        if not self._confirmCloseActiveSpecimen("Re-initializing the study"):
+            return
 
         try:
-            if self.logic.cfg is None:
-                config_path = str(self.ui.tbConfigPath.text).strip() or self.CONFIG_PATH
-                if not config_path:
-                    self._promptStudyNotReady("No study config selected yet.")
-                    return
+            # Always re-read the config file: Initialize Study is also the way to pick up an edited config (before, the file was read
+            # only when no config was loaded yet, so edits never arrived).
+            config_path = str(self.ui.tbConfigPath.text).strip() or self.CONFIG_PATH
+            if not config_path and self.logic.cfg is None:
+                self._promptStudyNotReady("No study config selected yet.")
+                return
+            if config_path:
                 if not os.path.exists(config_path):
                     self._promptStudyNotReady(f"Config file not found:\n{config_path}")
                     return
@@ -233,7 +249,7 @@ class StudySetupMixin:
                     # confusing generic "Failed to load config" message.
                     self._promptStudyNotReady(f"That's a folder, not a config file yet:\n{config_path}")
                     return
-                self.logic.load_config(config_path)
+                self._reloadConfigKeepingPathEdits(config_path)
         except Exception as e:
             slicer.util.errorDisplay("Failed to load config: " + str(e))
             return
@@ -280,6 +296,21 @@ class StudySetupMixin:
             slicer.util.errorDisplay("Failed to initialize study: " + str(e))
             import traceback
             traceback.print_exc()
+
+    def _reloadConfigKeepingPathEdits(self, config_path):
+        """Re-read `config_path` into the Logic. The Database/Preseg CSV path fields were filled from the previous config; where one still holds exactly that value the new config's path replaces it, but a path the user typed or browsed by hand is left alone."""
+        old_cfg = self.logic.cfg
+        old_paths = {}
+        if old_cfg is not None:
+            old_paths = {"DatabaseCSVPath": self.logic._abs_path(old_cfg.database_csv_path),
+                         "PresegCSVPath": self.logic._abs_path(old_cfg.preseg_csv_path)}
+        self.logic.load_config(config_path)
+        new_paths = {"DatabaseCSVPath": self.logic._abs_path(self.logic.cfg.database_csv_path),
+                     "PresegCSVPath": self.logic._abs_path(self.logic.cfg.preseg_csv_path)}
+        for name, new_value in new_paths.items():
+            current = self._parameterNode.GetParameter(name)
+            if not current or current == old_paths.get(name):
+                self._parameterNode.SetParameter(name, new_value)
 
     def _confirmStudyAlreadyOpen(self, lock_info):
         """The study's lock file says someone else has it open. Ask whether to continue anyway (the lock is advisory) - two sessions editing the same database.csv can overwrite each other's status changes. True = continue."""
