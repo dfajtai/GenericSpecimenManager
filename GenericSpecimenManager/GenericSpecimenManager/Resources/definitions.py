@@ -33,6 +33,8 @@ SPECIMEN_TABLE_MIN_VISIBLE_ROWS = 3
 # ---- Config Editor GUI ----
 # Images tab - how many text lines tall the "Effective settings" box is (it scrolls for
 # more); the images table above gets all the remaining space.
+# Home of the project (source, docs, issues) - opened by the Help block's "Project page" button
+PROJECT_URL = "https://github.com/dfajtai/GenericSpecimenManager"
 # objectName of the Config Editor window; the main module's Ctrl+S yields to it while that window is active
 CONFIG_EDITOR_OBJECT_NAME = "GenericSpecimenManagerConfigEditor"
 IMAGES_PREVIEW_VISIBLE_LINES = 4

@@ -134,7 +134,7 @@
 <a name="segment-editor"></a>
 <h2>&#128394; Segment editor</h2>
 <ul>
-<li><b>Overwrite mode = none</b> - same as the Segment Editor's "Allow overlap" checkbox. <code>all_segments</code>/<code>visible_segments</code> restrict painting so it doesn't eat into other segments.</li>
+<li><b>Modify other segments</b> (<code>overwrite_mode</code>, in the <b>Masking</b> group) - <i>Allow overlap</i> (<code>none</code>) is the Segment Editor's "Allow overlap" checkbox; <i>Overwrite all / visible segments</i> (<code>all_segments</code>/<code>visible_segments</code>) restrict painting so it doesn't eat into other segments. <code>(unset)</code> leaves Slicer's own setting alone.</li>
 <li><b>Editable area</b> - where painting is allowed, like the Segment Editor's dropdown of the same name: <code>everywhere</code>, or only <code>inside</code> / <code>outside</code> <code>all_segments</code> / <code>visible_segments</code>. <code>(unset)</code> leaves Slicer's own setting (everywhere).</li>
 <li><b>Use absolute size (mm)</b> checked + shape <code>sphere</code> - fixed-size 3D brush in millimeters, regardless of zoom (e.g. always exactly 5&nbsp;mm). Unchecked - size as a % of the slice view instead (grows/shrinks as you zoom).</li>
 <li>Applied <b>once</b>, at Study Init - not re-applied per specimen. It's set on two places so it works whether or not Segment Editor was already opened this session:

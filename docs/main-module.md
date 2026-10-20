@@ -4,11 +4,17 @@ The module GUI, specimen status, filtering, reset, and how errors are handled.
 
 ## Main module layout, specimen status, filter and reset
 
-The module is three collapsible blocks in the Slicer style: **Advanced Study Settings** (collapsed; the
-config and CSV paths), then the **Initialize Study** button (pastel green until a study is initialized;
-**Save database CSV** - hidden with `auto_save_database` - and **Batch export** - only if the config
-enables it - appear under it once it is), the **Specimen browser** (Group and Status filters in one row, the
-table, Load / Reset / Save / Close) and a collapsed **Help** block.
+The module is collapsible blocks in the Slicer style, top to bottom: a collapsed **Help** block (three buttons: *Workflow help...* and *Config Editor help...* open the two cheat sheets, *Project page on GitHub* opens the repository in the browser), **Advanced Study Settings**
+(collapsed; the config and CSV paths, and - once a study is initialized and the config enables it - the **Batch export**
+button), then the **Initialize Study** button (pastel green until a study is initialized; **Save database CSV** - hidden
+with `auto_save_database` - appears under it once it is) and the **Specimen browser** (Group and Status filters in one row, the
+table, Load / Reset / Save / Close). A progress bar appears at the very bottom while a specimen loads or a batch export runs.
+
+**Initialize Study** always re-reads the config file, so a config edited and saved meanwhile takes effect. If a specimen is
+open, any action that would invalidate it (initializing again, loading another config, running Batch export) says so and offers
+*Save and close* / *Close without saving* / *Cancel*. **Load selected specimen** opens the images with the first `foreground`
+image (lowest index) as the shown foreground and as the Segment Editor's active (source) image, and puts the crosshair at the
+centre of the scan; switching the source volume in the Segment Editor keeps the background and moves the foreground along.
 
 Each specimen has a status, stored in the `status_column` of `database.csv` as an integer
 (`0` untouched, `1` in progress, `2` to review, `3` finished; values live in `definitions.py`).

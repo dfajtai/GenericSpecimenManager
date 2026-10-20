@@ -25,7 +25,7 @@ from Resources.utils.color_tables import builtin_color_node
 from Resources.utils.slicer_ui import NullProgress
 from Resources.utils.segment_editor import activate_segment_editor, ensure_integer_labelmap
 from Resources.utils.volume_rendering import start_volume_rendering
-from Resources.utils.workspace import customize_workplace
+from Resources.utils.workspace import center_slices_on, customize_workplace
 
 
 class GenericSpecimen:
@@ -402,7 +402,8 @@ class GenericSpecimen:
                 label_node = node
                 if opacity is not None:
                     label_opacity = opacity
-            elif role == "foreground":
+            elif role == "foreground" and foreground_node is None:
+                # a slice view has ONE foreground layer; with several foreground images the FIRST one listed is shown (the rest are loaded and can be switched to by hand)
                 foreground_node = node
                 if opacity is not None:
                     foreground_opacity = opacity
@@ -438,6 +439,10 @@ class GenericSpecimen:
 
         progress.step(f"Loading {self.label}: setting up the workspace")
         customize_workplace(self.cfg, self.segmentation_node)
+        # open on the middle of the scan: the segmentation's reference image, else the background image, else the first image loaded
+        ref_name = self.cfg.segmentation.reference_image
+        center_slices_on(self.node_dict.get(ref_name) if ref_name and self.node_dict.get(ref_name) is not None
+                         else (background_node or next((n for k, n in self.node_dict.items() if not k.startswith("__")), None)))
 
         vr_entries = [e for e in self.cfg.volume_rendering if e.enabled]
         if vr_entries:
@@ -446,8 +451,10 @@ class GenericSpecimen:
 
         if seg_cfg.enabled and self.cfg.segment_editor.is_configured():
             ref_name = self.cfg.segmentation.reference_image
-            self._layer_keeper = activate_segment_editor(self.cfg.segment_editor, self.segmentation_node,
-                                                         self.node_dict.get(ref_name) if ref_name else None)
+            # The Segment Editor's source volume (the image shown as the active/foreground one) is the FIRST foreground image if there
+            # is one, else the segmentation's reference image. The segmentation keeps its geometry from the reference image either way.
+            source_node = foreground_node if foreground_node is not None else (self.node_dict.get(ref_name) if ref_name else None)
+            self._layer_keeper = activate_segment_editor(self.cfg.segment_editor, self.segmentation_node, source_node)
 
 
     def save(self):

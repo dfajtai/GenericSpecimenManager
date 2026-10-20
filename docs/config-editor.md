@@ -1,6 +1,6 @@
 # Config Editor
 
-A "Config Editor..." button lives in every module GUI. It's a standalone,
+A "Config Editor..." button lives in every module GUI. **Ctrl+S** saves the config while the editor window is active (quietly; the Save button also offers to reload it in the module). It's a standalone,
 non-modal window that **automatically opens pre-loaded with whatever config
 is currently active in the main module** (if any). Nearly the whole schema
 is editable tab-by-tab, without hand-writing JSON. Tabs are ordered as a

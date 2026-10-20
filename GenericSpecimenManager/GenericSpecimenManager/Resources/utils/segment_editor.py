@@ -13,6 +13,7 @@ brush keys with "Paint," / "Paint." - that attribute never existed, so nothing e
 """
 
 import re
+import time
 
 import qt
 import slicer
@@ -203,25 +204,34 @@ class SourceVolumeLayerKeeper:
     put back, the new source goes to the foreground, and the foreground opacity is left as it was. When the source volume
     is the background itself (the usual reference image), the foreground that was shown before is put back instead.
 
-    The restore is queued with a zero-delay timer, because Slicer changes the layers in response to the same change (possibly after
-    our observer ran) - the timer lets that finish first. Behaviour in a live Slicer could not be tested from here."""
+    Slicer changes the layers in response to the same source-volume change, and the order of its work and of our observer is not
+    something we can rely on (nor test here). So the fix-up is applied three ways: queued with a zero-delay timer, again after 250 ms,
+    and - for 2 s after each source-volume change - whenever a slice view's layers change and differ from what is wanted. Every step
+    is logged (INFO) so a case where it still does not hold can be diagnosed from the Python console."""
+
+    SETTLE_SECONDS = 2.0   # after a source-volume change, layer changes by Slicer itself are corrected for this long
 
     def __init__(self, editor_node, background_id, foreground_id, foreground_opacity):
-        """Observe `editor_node`; `background_id` / `foreground_id` / `foreground_opacity` are the layers to keep, taken before the source volume was first set."""
+        """Observe `editor_node` (source volume changes) and the slice composite nodes (layer changes); `background_id` / `foreground_id` / `foreground_opacity` are the layers to keep, taken before the source volume was first set."""
         self._node = editor_node
         self._kept = (background_id, foreground_id, foreground_opacity)
         source = _source_volume_of(editor_node)
         self._last_source_id = source.GetID() if source else None
-        self._observer_tag = editor_node.AddObserver(vtk.vtkCommand.ModifiedEvent, self._onNodeModified)
+        self._settle_until = 0.0
+        self._fixing = False
+        self._observers = [(editor_node, editor_node.AddObserver(vtk.vtkCommand.ModifiedEvent, self._onNodeModified))]
+        for composite in slicer.util.getNodesByClass("vtkMRMLSliceCompositeNode"):
+            self._observers.append((composite, composite.AddObserver(vtk.vtkCommand.ModifiedEvent, self._onCompositeModified)))
+        logger.info(f"[SourceVolumeLayerKeeper] watching; kept background={background_id}, foreground={foreground_id}")
 
     def stop(self):
         """Stop observing (specimen closed). Safe to call twice."""
-        if self._observer_tag is not None:
+        for node, tag in self._observers:
             try:
-                self._node.RemoveObserver(self._observer_tag)
+                node.RemoveObserver(tag)
             except Exception:
                 pass
-            self._observer_tag = None
+        self._observers = []
 
     def _onNodeModified(self, _caller=None, _event=None):
         """The editor node changed (it does for many reasons): act only if the source volume really is a different one now."""
@@ -230,25 +240,58 @@ class SourceVolumeLayerKeeper:
         if source_id == self._last_source_id:
             return
         self._last_source_id = source_id
+        self._settle_until = time.monotonic() + self.SETTLE_SECONDS
+        logger.info(f"[SourceVolumeLayerKeeper] source volume is now {source.GetName() if source else None}")
         qt.QTimer.singleShot(0, self.restoreLayers)
+        qt.QTimer.singleShot(250, self.restoreLayers)
 
-    def restoreLayers(self):
-        """Put the kept background back and the source volume into the foreground (or the kept foreground, if the source is the background itself)."""
+    def _onCompositeModified(self, _caller=None, _event=None):
+        """A slice view's layers changed: shortly after a source-volume change that is Slicer's own re-arrangement - put the wanted layers back if they differ."""
+        if self._fixing or time.monotonic() > self._settle_until:
+            return
+        wanted = self._wanted_layers()
+        if wanted is None:
+            return
+        background, foreground, _opacity = wanted
+        shown_background, shown_foreground, _o = _current_slice_layers()
+        if shown_background != background.GetID() or shown_foreground != (foreground.GetID() if foreground else None):
+            qt.QTimer.singleShot(0, self.restoreLayers)
+
+    def _wanted_layers(self):
+        """(background node, foreground node or None, foreground opacity) the slice views should show, or None if it cannot be worked out."""
         background_id, foreground_id, foreground_opacity = self._kept
         source = _source_volume_of(self._node)
         if source is None or not background_id:
-            return
+            return None
         background = slicer.mrmlScene.GetNodeByID(background_id)
         if background is None:
-            return
+            return None
         if source.GetID() == background_id:
             foreground = slicer.mrmlScene.GetNodeByID(foreground_id) if foreground_id else None
         else:
             foreground = source
+        return background, foreground, foreground_opacity
+
+    def restoreLayers(self):
+        """Put the kept background back and the source volume into the foreground (or the kept foreground, if the source is the background itself)."""
+        if self._fixing:
+            return
+        wanted = self._wanted_layers()
+        if wanted is None:
+            return
+        background, foreground, foreground_opacity = wanted
+        shown_background, shown_foreground, _o = _current_slice_layers()
+        if shown_background == background.GetID() and shown_foreground == (foreground.GetID() if foreground else None):
+            return   # already as wanted (the second, delayed fix-up usually finds it so) - nothing to do, nothing to log
         kwargs = {"background": background, "foreground": foreground}
         if foreground is not None and foreground_opacity:
             kwargs["foregroundOpacity"] = foreground_opacity
-        slicer.util.setSliceViewerLayers(**kwargs)
+        self._fixing = True
+        try:
+            slicer.util.setSliceViewerLayers(**kwargs)
+        finally:
+            self._fixing = False
+        logger.info(f"[SourceVolumeLayerKeeper] layers set: background={background.GetName()}, foreground={foreground.GetName() if foreground else None}")
 
 
 def _current_slice_layers():

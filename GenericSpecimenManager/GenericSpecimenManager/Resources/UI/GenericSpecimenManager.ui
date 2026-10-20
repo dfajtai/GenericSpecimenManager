@@ -24,6 +24,54 @@
     <number>0</number>
    </property>
    <item>
+    <widget class="ctkCollapsibleButton" name="helpCollapsibleButton" native="true">
+     <property name="toolTip" stdset="0">
+      <string>Module help.</string>
+     </property>
+     <property name="text" stdset="0">
+      <string>Help</string>
+     </property>
+     <property name="collapsed" stdset="0">
+      <bool>true</bool>
+     </property>
+     <property name="collapsedHeight" stdset="0">
+      <number>0</number>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_help">
+      <item>
+       <widget class="QPushButton" name="btnModuleHelp">
+        <property name="toolTip">
+         <string>Open the module cheat sheet: workflow, specimen table, status, reset, batch export. Has a section jump and a search bar.</string>
+        </property>
+        <property name="text">
+         <string>Workflow help...</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnConfigEditorHelp">
+        <property name="toolTip">
+         <string>Open the Config Editor cheat sheet (the key reference for config.json) without opening the Config Editor.</string>
+        </property>
+        <property name="text">
+         <string>Config Editor help...</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnProjectPage">
+        <property name="toolTip">
+         <string>Open the project page (source code, documentation, issues) in the web browser.</string>
+        </property>
+        <property name="text">
+         <string>Project page on GitHub</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="ctkCollapsibleButton" name="studySettingsCollapsibleButton" native="true">
      <property name="toolTip" stdset="0">
       <string>Config file and database/preseg CSV paths - normally taken from the config; collapsed by default.</string>
@@ -33,6 +81,9 @@
      </property>
      <property name="collapsed" stdset="0">
       <bool>true</bool>
+     </property>
+     <property name="collapsedHeight" stdset="0">
+      <number>0</number>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_4">
       <item>
@@ -144,6 +195,16 @@
         </layout>
        </widget>
       </item>
+      <item>
+       <widget class="QPushButton" name="btnBatchExport">
+        <property name="toolTip">
+         <string>Runs cfg.batch_export against every 'finished' specimen: exports segments/markups to files and/or computes custom per-segment statistics into one combined CSV, depending on what's enabled in the Config Editor's General tab.</string>
+        </property>
+        <property name="text">
+         <string>Batch Export</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -160,7 +221,7 @@
        <number>0</number>
       </property>
       <property name="bottomMargin">
-       <number>8</number>
+       <number>0</number>
       </property>
    <item>
     <widget class="QPushButton" name="btnInitializeStudy">
@@ -179,16 +240,6 @@
         </property>
         <property name="text">
          <string> Save database CSV</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btnBatchExport">
-        <property name="toolTip">
-         <string>Runs cfg.batch_export against every 'finished' specimen: exports segments/markups to files and/or computes custom per-segment statistics into one combined CSV, depending on what's enabled in the Config Editor's General tab.</string>
-        </property>
-        <property name="text">
-         <string>Batch Export</string>
         </property>
        </widget>
       </item>
@@ -399,31 +450,6 @@
         </property>
         <property name="text">
          <string>Close active specimen</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="ctkCollapsibleButton" name="helpCollapsibleButton" native="true">
-     <property name="toolTip" stdset="0">
-      <string>Module help.</string>
-     </property>
-     <property name="text" stdset="0">
-      <string>Help</string>
-     </property>
-     <property name="collapsed" stdset="0">
-      <bool>true</bool>
-     </property>
-     <layout class="QVBoxLayout" name="verticalLayout_help">
-      <item>
-       <widget class="QPushButton" name="btnModuleHelp">
-        <property name="toolTip">
-         <string>Open the module cheat sheet: workflow, specimen table, status, reset, batch export. Has a section jump and a search bar.</string>
-        </property>
-        <property name="text">
-         <string>Open cheat sheet...</string>
         </property>
        </widget>
       </item>

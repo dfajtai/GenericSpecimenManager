@@ -53,6 +53,23 @@ def customize_workplace(cfg, segmentation_node=None):
     apply_slice_rotation(cfg.slice_rotation)
 
 
+def center_slices_on(volume_node):
+    """Jump the crosshair and all slice views to the centre of `volume_node` (the middle of its RAS bounding box), so a specimen opens looking at the middle of the scan instead of wherever the previous one left the crosshair. Uses the markups logic's JumpSlicesToLocation (Slicer 4.11+) and sets the crosshair node's position explicitly as well; neither could be run outside Slicer, so a failure is logged, never raised."""
+    if volume_node is None:
+        return
+    try:
+        bounds = [0.0] * 6
+        volume_node.GetRASBounds(bounds)
+        center = [(bounds[0] + bounds[1]) / 2.0, (bounds[2] + bounds[3]) / 2.0, (bounds[4] + bounds[5]) / 2.0]
+        slicer.modules.markups.logic().JumpSlicesToLocation(center[0], center[1], center[2], True)
+        crosshair = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
+        if crosshair is not None:
+            crosshair.SetCrosshairRAS(center)
+        logger.info(f"[GenericSpecimen] crosshair centred on '{volume_node.GetName()}': RAS {[round(c, 1) for c in center]}")
+    except Exception as e:
+        logger.warning(f"[GenericSpecimen] could not centre the crosshair: {e}")
+
+
 def resolve_enum(obj, name, default=None):
     """Look up a named constant on a live MRML/VTK node instance by
     string (e.g. crosshair, "ShowBasic" -> crosshair.ShowBasic) - lets

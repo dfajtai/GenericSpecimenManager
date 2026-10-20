@@ -14,10 +14,12 @@ from slicer.util import VTKObservationMixin
 from Resources.definitions import (
     HIDE_HELP_AND_ACKNOWLEDGEMENT as _DEFINITIONS_HIDE_HELP_AND_ACKNOWLEDGEMENT,
     HIDE_RELOAD_AND_TEST as _DEFINITIONS_HIDE_RELOAD_AND_TEST,
+    PROJECT_URL,
     SPECIMEN_STATUS_LABELS,
     SpecimenStatus,
 )
 from Resources.gui.annotation import AnnotationMixin
+from Resources.gui.config_editor.dialog import CONFIG_EDITOR_HELP_SECTIONS
 from Resources.gui.help_dialog import show_cheatsheet_dialog
 from Resources.gui.specimen_actions import SpecimenActionsMixin
 from Resources.gui.specimen_table import SpecimenTableMixin
@@ -105,6 +107,9 @@ class GenericSpecimenManagerWidgetBase(SpecimenTableMixin, AnnotationMixin, Stud
         self._saveShortcut = SaveShortcut(self._onSaveShortcut)
         self.ui.btnModuleHelp.connect('clicked(bool)', lambda checked=False: show_cheatsheet_dialog(
             slicer.util.mainWindow(), "Generic Specimen Manager - Cheat Sheet", "module_help_cheatsheet.html", MODULE_HELP_SECTIONS))
+        self.ui.btnConfigEditorHelp.connect('clicked(bool)', lambda checked=False: show_cheatsheet_dialog(
+            slicer.util.mainWindow(), "Config Editor - Cheat Sheet", "config_editor_help_cheatsheet.html", CONFIG_EDITOR_HELP_SECTIONS))
+        self.ui.btnProjectPage.connect('clicked(bool)', lambda checked=False: qt.QDesktopServices.openUrl(qt.QUrl(PROJECT_URL)))
         self.ui.btnLoadSelected.connect('clicked(bool)', self.onBtnLoadSelected)
         self.ui.btnSaveActiveSpecimen.connect('clicked(bool)', self.onBtnSaveActiveSpecimen)
         self.ui.btnCloseActiveSpecimen.connect('clicked(bool)', self.onBtnCloseActiveSpecimen)

@@ -24,16 +24,19 @@ Code structure in detail: [Architecture](../docs/architecture.md).
 
 ## Using the module
 
-The module window has three blocks:
+The module window has these blocks, top to bottom: a collapsed **Help** block (the workflow cheat sheet, the Config Editor cheat sheet and a link to the project page on GitHub), then
 
-1. **Advanced Study Settings** (collapsed) - the config file and the two CSV paths.
+1. **Advanced Study Settings** (collapsed) - the config file and the two CSV paths, and the **Batch export** button
+   (shown once a study is initialized and the config enables it).
 2. **Initialize Study** - loads the config and both CSVs and builds the specimen list. It is pastel green until a
-   study is initialized. Below it appear **Save database CSV** and **Batch export**, when the config wants them.
+   study is initialized. Below it appears **Save database CSV**, when the config wants it.
 3. **Specimen browser** - Group and Status filters, the specimen table, and the buttons to *Load*, *Reset*,
    *Save* and *Close* a specimen.
 
-A collapsed **Help** block at the bottom opens the module's cheat sheet. The **Config Editor...** button builds and
-edits `config.json` without hand-writing JSON.
+The **Config Editor...** button builds and edits `config.json` without hand-writing JSON (`Ctrl+S` saves the config
+while that window is active). A progress bar at the bottom of the module shows loading a specimen and the batch export.
+*Initialize Study* re-reads the config, so edits take effect; when a specimen is open, anything that would invalidate it
+asks first whether to save and close it.
 
 Typical session: select a config → *Initialize Study* → select a specimen → *Load selected specimen* → segment and
 place markups → *Save progress* (or `Ctrl+S`) → *Close active specimen* (optionally marking it *to review* or

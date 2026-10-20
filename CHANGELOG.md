@@ -12,6 +12,12 @@ Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 - **Batch export** offers to save and close an open specimen (it used to only log "please close the active specimen"), asks for confirmation first (it can take long) and a **progress bar** at the bottom of the module shows loading a specimen and the batch export.
 - **Closing the active specimen** is now asked about explicitly (Save and close / Close without saving / Cancel) when a config is loaded into the module or the study is re-initialized, instead of silently leaving the specimen open or only offering to save.
 - **Initialize Study re-reads the config file** (it used to read it only when none was loaded, so edits to a saved config never took effect on re-initializing). Hand-edited CSV paths are kept.
+- **Several `foreground` images**: the first one listed in `images[]` is shown in the slice views after opening a specimen (it used to be the last one).
+- **Segment Editor source volume**: after opening a specimen the first foreground image (lowest index) is the Segment Editor's source volume and the shown foreground, the background stays; the foreground follow-up when switching source volume was made more robust and logs `[SourceVolumeLayerKeeper]` lines.
+- **Crosshair** and slice views jump to the centre of the scan (the reference image) after a specimen is loaded.
+- **Main GUI**: the *Batch export* button now lives in the collapsible *Advanced Study Settings* block, and the collapsed block leaves less empty space below it.
+- **Main GUI**: the collapsed *Help* block is now at the top, above *Advanced Study Settings*; READMEs and cheat sheets updated to the current behaviour.
+- **Help block**: separate *Workflow help* and *Config Editor help* buttons plus a link to the GitHub project page; less empty space under the collapsed block.
 
 ## 2026-10-16
 
