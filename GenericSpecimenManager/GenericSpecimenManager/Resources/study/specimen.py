@@ -47,6 +47,7 @@ class GenericSpecimen:
         self.volume_rendering_nodes = []
         self.volume_rendering_roi = []
         self._layer_keeper = None   # SourceVolumeLayerKeeper while the Segment Editor is active for this specimen
+        self._saved_mtime = {}      # id(node) -> node.GetMTime() right after our last write of it (see _node_has_changed)
 
         self.row_index = None
         self.status_col_index = None
@@ -482,6 +483,7 @@ class GenericSpecimen:
             if out_dir and not os.path.isdir(out_dir):
                 os.makedirs(out_dir, exist_ok=True)
             self._write_node_safely(node, path, keep_previous=KEEP_PREVIOUS_SPECIMEN_FILES and not is_volume)
+            self._saved_mtime[id(node)] = node.GetMTime()
             save_rows.append((item, status, path))
 
         logger.info(f"[GenericSpecimen] saved {self.label}: {len(save_rows)} item(s) -> {self.out_dir}")
@@ -500,8 +502,15 @@ class GenericSpecimen:
                 raise IOError(f"Slicer could not write '{os.path.basename(path)}'")
         safe_io.atomic_write(path, write, keep_previous=keep_previous)
 
+    def has_unsaved_changes(self):
+        """True if the segmentation and/or markups node changed since it was loaded or last saved by save() - what the status dot and the close question go by."""
+        return any(node is not None and self._node_has_changed(node) for node in (self.segmentation_node, self.markups_node))
+
     def _node_has_changed(self, node):
-        """True if a storable node has been modified since it was last read/written, via the standard MRML GetModifiedSinceRead() check. Defensive: if the check itself isn't available/fails on your Slicer version, assume changed - safer to over-save than to silently lose an edit."""
+        """True if a storable node has been modified since it was last read/written. After our own save() the node's MTime is compared with the one remembered then: save() writes through a temporary storage node that is not attached to the node, so Slicer's own GetModifiedSinceRead() flag is never cleared by it (that kept the status dot orange after a save). Before the first save, the standard MRML GetModifiedSinceRead() check is used. Defensive: if the check itself isn't available/fails on your Slicer version, assume changed - safer to over-save than to silently lose an edit."""
+        saved = self._saved_mtime.get(id(node))
+        if saved is not None:
+            return node.GetMTime() > saved
         try:
             return bool(node.GetModifiedSinceRead())
         except Exception as e:

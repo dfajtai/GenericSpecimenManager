@@ -224,17 +224,8 @@ class SpecimenTableMixin:
         return f'<span style="color:{color};">●</span> '
 
     def _specimenIsDirty(self, specimen):
-        """True if this specimen's segmentation and/or markups node has unsaved changes, via the
-        standard MRML GetModifiedSinceRead() check (same mechanism GenericSpecimen.save() itself
-        uses for images - see _node_has_changed())."""
-        for node in (specimen.segmentation_node, specimen.markups_node):
-            if node is not None:
-                try:
-                    if node.GetModifiedSinceRead():
-                        return True
-                except Exception:
-                    pass
-        return False
+        """True if this specimen's segmentation and/or markups node has unsaved changes (GenericSpecimen.has_unsaved_changes())."""
+        return specimen.has_unsaved_changes()
 
     def _refreshSpecimenStatusLabels(self):
         """Update the colored status dot in front of the Selected/Active specimen labels: gray =

@@ -67,14 +67,15 @@ class SpecimenActionsMixin:
             traceback.print_exc()
 
     def onBtnCloseActiveSpecimen(self):
-        """Close the active specimen: asks Yes / Yes, mark to-review / Yes, mark finished / No instead of a plain
-        Yes/No confirm, so a specimen's status can be set without a separate trip to the table
-        dropdown first. This NEVER saves the specimen's own segmentation/markups - use Save
-        progress for that before closing if you want to keep unsaved work. The status update goes
-        through the same path as a manual dropdown pick - auto-saved to disk right away if
+        """Close the active specimen. With unsaved segmentation/markups changes a warning comes first (Save and close / Close /
+        Cancel, see _confirmDiscardUnsaved()); then the close question: Yes / Yes, mark to-review / Yes, mark finished / No
+        instead of a plain Yes/No confirm, so a specimen's status can be set without a separate trip to the table dropdown
+        first. The status update goes through the same path as a manual dropdown pick - auto-saved to disk right away if
         Auto-save database is checked (see _autoSaveDatabaseIfEnabled())."""
         if not self.logic.hasActiveSpecimen:
             self.logic.info("There is no active specimen to close.")
+            return
+        if not self._confirmDiscardUnsaved():
             return
         box = qt.QMessageBox(slicer.util.mainWindow())
         box.setIcon(qt.QMessageBox.Question)
@@ -99,6 +100,28 @@ class SpecimenActionsMixin:
         if text not in choices:
             return
         self._restoreSelectionAfter(self._closeActiveSpecimen, choices[text])
+
+    def _confirmDiscardUnsaved(self):
+        """If the active specimen has unsaved segmentation/markups changes, ask Save and close / Close / Cancel. Returns True to go on closing (nothing unsaved, saved, or the user chose to close anyway), False to keep the specimen open (Cancel, or the save failed - the error is shown by _saveActiveSpecimen())."""
+        specimen = self.logic.active_specimen
+        if not specimen.has_unsaved_changes():
+            return True
+        box = qt.QMessageBox(slicer.util.mainWindow())
+        box.setIcon(qt.QMessageBox.Warning)
+        box.setWindowTitle("Unsaved changes")
+        box.setText(f"{specimen.label} has unsaved changes (segmentation / markups) that are lost if you close it without saving.")
+        saveBtn = box.addButton("Save and close", qt.QMessageBox.AcceptRole)
+        closeBtn = box.addButton("Close", qt.QMessageBox.DestructiveRole)
+        cancelBtn = box.addButton("Cancel", qt.QMessageBox.RejectRole)
+        box.setDefaultButton(saveBtn)
+        box.setEscapeButton(cancelBtn)
+        box.exec_()
+        clicked = box.clickedButton()
+        text = str(clicked.text) if clicked is not None else ""
+        if text == "Save and close":
+            self._saveActiveSpecimen(inform_user=False)
+            return not specimen.has_unsaved_changes()
+        return text == "Close"
 
     def _restoreSelectionAfter(self, action, *args):
         """Run `action(*args)` with the specimen table disabled, then re-select the row that was selected before. Closing/resetting a specimen makes the table grab focus, and a table with no current cell answers that by selecting its first row - a disabled table can't take focus."""
