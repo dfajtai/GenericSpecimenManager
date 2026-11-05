@@ -100,6 +100,18 @@ class Threshold:
 
 
 @dataclass
+class SegmentEditorThreshold:
+    """Per-image default range of the Segment Editor's Threshold effect, set when this image becomes the editor's source volume. Either end may be left out (then that end is not touched)."""
+    min: Optional[float] = None
+    max: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, d):
+        """Build a SegmentEditorThreshold from a raw dict, or None if the dict is empty/missing."""
+        return _from_dict(cls, d) if d else None
+
+
+@dataclass
 class ImageConfig:
     """One images[] entry - OR the result of merging defaults.image ->
     presets[name] -> an entry, via merge_image_overrides(). Every field is
@@ -116,6 +128,7 @@ class ImageConfig:
     window_level: Optional[WindowLevel] = None
     color_table: Optional[str] = None
     threshold: Optional[Threshold] = None
+    segment_editor_threshold: Optional[SegmentEditorThreshold] = None   # Threshold effect range in the Segment Editor (not the display threshold above)
     interpolate: Optional[bool] = None
 
     @classmethod
@@ -124,9 +137,11 @@ class ImageConfig:
         d = dict(d or {})
         wl = WindowLevel.from_dict(d.pop("window_level", None))
         th = Threshold.from_dict(d.pop("threshold", None))
+        se_th = SegmentEditorThreshold.from_dict(d.pop("segment_editor_threshold", None))
         inst = _from_dict(cls, d)
         inst.window_level = wl
         inst.threshold = th
+        inst.segment_editor_threshold = se_th
         return inst
 
 

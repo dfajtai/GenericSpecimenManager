@@ -57,7 +57,7 @@ class ImagesTabMixin:
             "One row per image. The file comes from the row's CSV column when that has a value for the "
             "specimen; otherwise from the Default path pattern below - so an image that is NOT in the preseg "
             "CSV can be added as a name-only row. The 'Advanced' column summarizes path pattern/window/level/"
-            "threshold/interpolate for that row, if set.")
+            "threshold/Segment Editor threshold/interpolate for that row, if set.")
         imgHint.setWordWrap(True)
         layout.addWidget(imgHint)
 
@@ -272,7 +272,7 @@ class ImagesTabMixin:
         advItem.setFlags(advItem.flags() & ~qt.Qt.ItemIsEditable)
         self.imgTable.setItem(row, 8, advItem)
 
-        adv = {k: d[k] for k in ("path_pattern", "window_level", "threshold", "interpolate") if k in d}
+        adv = {k: d[k] for k in ("path_pattern", "window_level", "threshold", "segment_editor_threshold", "interpolate") if k in d}
         self._image_advanced.insert(row, adv)
         self._updateAdvancedIndicator(row)
         self._markDirty()
@@ -315,6 +315,9 @@ class ImagesTabMixin:
         th = adv.get("threshold")
         if th:
             parts.append(f"thr:{th.get('min','?')}-{th.get('max','?')}")
+        se_th = adv.get("segment_editor_threshold")
+        if se_th:
+            parts.append(f"SE-thr:{se_th.get('min','?')}-{se_th.get('max','?')}")
         if "interpolate" in adv:
             parts.append("interp:" + ("on" if adv["interpolate"] else "off"))
         return ", ".join(parts)

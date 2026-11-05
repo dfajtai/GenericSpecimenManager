@@ -11,7 +11,7 @@ from Resources.gui.config_editor.helpers import to_float
 
 class ImageAdvancedPopup(qt.QDialog):
     """Structured popup for an image row's advanced fields: path_pattern,
-    window_level, threshold, interpolate. Replaces free-form JSON with actual fields."""
+    window_level, threshold, segment_editor_threshold, interpolate. Replaces free-form JSON with actual fields."""
 
     WL_MODES = ["(unset)", "Auto", "Min / Max", "Window / Level"]
 
@@ -104,6 +104,27 @@ class ImageAdvancedPopup(qt.QDialog):
         thLayout.addWidget(self.chkThresholdApply)
         layout.addWidget(self.thresholdGroup)
 
+        # ---- Segment Editor threshold ----
+        se_th = data.get("segment_editor_threshold") or {}
+        self.seThresholdGroup = qt.QGroupBox("Segment Editor: default Threshold range")
+        self.seThresholdGroup.setCheckable(True)
+        self.seThresholdGroup.checked = bool(se_th)
+        self.seThresholdGroup.setToolTip(
+            "<html>Range the Segment Editor's <b>Threshold</b> effect starts with when this image is the Segment Editor's source volume<br>"
+            "(set when the specimen opens and every time another source volume is picked).<br>"
+            "Not the display threshold above. An end left empty is not touched.</html>")
+        seLayout = qt.QHBoxLayout(self.seThresholdGroup)
+        self.seMinEdit = qt.QLineEdit("" if se_th.get("min") is None else str(se_th["min"]))
+        self.seMaxEdit = qt.QLineEdit("" if se_th.get("max") is None else str(se_th["max"]))
+        for edit in (self.seMinEdit, self.seMaxEdit):
+            edit.setMaximumWidth(110)   # a number, not a sentence
+        seLayout.addWidget(qt.QLabel("Min:"))
+        seLayout.addWidget(self.seMinEdit)
+        seLayout.addWidget(qt.QLabel("Max:"))
+        seLayout.addWidget(self.seMaxEdit)
+        seLayout.addStretch(1)
+        layout.addWidget(self.seThresholdGroup)
+
         # ---- Display ----
         displayGroup = qt.QGroupBox("Display")
         displayForm = qt.QFormLayout(displayGroup)
@@ -145,7 +166,7 @@ class ImageAdvancedPopup(qt.QDialog):
             widget.enabled = takes_values
 
     def resultDict(self):
-        """Build the advanced dict (path_pattern/window_level/threshold/interpolate) from the form's current values, omitting anything the user left unset."""
+        """Build the advanced dict (path_pattern/window_level/threshold/segment_editor_threshold/interpolate) from the form's current values, omitting anything the user left unset."""
         out = {}
         if self.pathPatternEdit.text.strip():
             out["path_pattern"] = self.pathPatternEdit.text.strip()
@@ -166,6 +187,11 @@ class ImageAdvancedPopup(qt.QDialog):
             if mx is not None:
                 th["max"] = mx
             out["threshold"] = th
+
+        if self.seThresholdGroup.checked:
+            se_th = {k: v for k, v in (("min", to_float(self.seMinEdit.text)), ("max", to_float(self.seMaxEdit.text))) if v is not None}
+            if se_th:
+                out["segment_editor_threshold"] = se_th
 
         if self.interpolateCombo.currentText != "(unset)":
             out["interpolate"] = self.interpolateCombo.currentText == "on"

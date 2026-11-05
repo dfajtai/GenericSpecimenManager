@@ -372,6 +372,7 @@ class GenericSpecimen:
         background_node = None
         label_node, label_opacity = None, None
         foreground_node, foreground_opacity = None, None
+        editor_thresholds = {}   # image node ID -> (name, SegmentEditorThreshold) for the images that have a Segment Editor threshold range
         load_rows = []
 
         for raw_img_cfg in entries:
@@ -394,6 +395,8 @@ class GenericSpecimen:
             self.node_dict[name] = node
             self.writeable[name] = path
             self._apply_visual_props(node, img_cfg)
+            if img_cfg.segment_editor_threshold is not None:
+                editor_thresholds[node.GetID()] = (name, img_cfg.segment_editor_threshold)
             load_rows.append((name, itype, img_cfg.role or "-", "loaded", path))
             opacity = img_cfg.opacity
             role = img_cfg.role
@@ -450,12 +453,12 @@ class GenericSpecimen:
             start_volume_rendering(vr_entries, self.node_dict, self.cfg.workspace, self.markups_node,
                                    self.volume_rendering_nodes, self.volume_rendering_roi)
 
-        if seg_cfg.enabled and self.cfg.segment_editor.is_configured():
+        if seg_cfg.enabled and (self.cfg.segment_editor.is_configured() or editor_thresholds):
             ref_name = self.cfg.segmentation.reference_image
             # The Segment Editor's source volume (the image shown as the active/foreground one) is the FIRST foreground image if there
             # is one, else the segmentation's reference image. The segmentation keeps its geometry from the reference image either way.
             source_node = foreground_node if foreground_node is not None else (self.node_dict.get(ref_name) if ref_name else None)
-            self._layer_keeper = activate_segment_editor(self.cfg.segment_editor, self.segmentation_node, source_node)
+            self._layer_keeper = activate_segment_editor(self.cfg.segment_editor, self.segmentation_node, source_node, editor_thresholds)
 
 
     def save(self):

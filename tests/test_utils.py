@@ -23,8 +23,8 @@ class _StubModule(types.ModuleType):
 for _name in ("slicer", "qt", "vtk", "ctk"):
     sys.modules.setdefault(_name, _StubModule(_name))
 
-from Resources.core.config_model import SegmentEditorConfig  # noqa: E402
-from Resources.utils.segment_editor import camel_to_label, camel_to_snake, editor_attributes  # noqa: E402
+from Resources.core.config_model import ImageConfig, SegmentEditorConfig, SegmentEditorThreshold  # noqa: E402
+from Resources.utils.segment_editor import camel_to_label, camel_to_snake, editor_attributes, threshold_attributes  # noqa: E402
 from Resources.utils.volume_rendering import offset_transfer_function, remap_transfer_function  # noqa: E402
 
 
@@ -67,6 +67,22 @@ class EditorAttributesTest(unittest.TestCase):
 
     def test_empty_config_sets_nothing(self):
         self.assertEqual(editor_attributes(SegmentEditorConfig.from_dict({})), {})
+
+
+class SegmentEditorThresholdTest(unittest.TestCase):
+    """The per-image Threshold-effect range (images[].segment_editor_threshold)."""
+
+    def test_parsed_from_an_image_entry(self):
+        cfg = ImageConfig.from_dict({"name": "ct", "segment_editor_threshold": {"min": 200, "max": 1500}})
+        self.assertEqual((cfg.segment_editor_threshold.min, cfg.segment_editor_threshold.max), (200, 1500))
+        self.assertIsNone(ImageConfig.from_dict({"name": "t2"}).segment_editor_threshold)
+
+    def test_attributes_use_the_effect_prefix(self):
+        self.assertEqual(threshold_attributes(SegmentEditorThreshold(min=200, max=1500)),
+                         {"Threshold.MinimumThreshold": "200", "Threshold.MaximumThreshold": "1500"})
+
+    def test_an_end_left_out_is_not_written(self):
+        self.assertEqual(threshold_attributes(SegmentEditorThreshold(min=-50)), {"Threshold.MinimumThreshold": "-50"})
 
 
 class TransferFunctionTest(unittest.TestCase):

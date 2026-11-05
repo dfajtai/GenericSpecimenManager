@@ -27,7 +27,8 @@ The complete `config.json` schema (1:1 with `core/config_model.py`) and a key re
       "preset": "ct_default", "type": "volume", "required": true,
       "opacity": 1.0, "color_table": "Grey", "interpolate": true,   // color_table: a Slicer table name/ID, or the built-in "gnuplot2" / "inferno" (matplotlib maps, black at the low end; values outside "threshold" stay transparent)
       "window_level": {"min":-150,"max":700},   // OR {"auto":true} OR {"window":..,"level":..}
-      "threshold": {"min":1,"max":300,"apply":true} },
+      "threshold": {"min":1,"max":300,"apply":true},   // DISPLAY threshold of the slice views
+      "segment_editor_threshold": {"min":200,"max":1500} },   // the Segment Editor's Threshold effect starts with this range whenever this image is the editor's source volume (either end may be left out; images without it leave the range as it is)
 
     // B) an image that is NOT a preseg column: just a name. Its file is found with
     //    defaults.image.path_pattern (e.g. "{ID}/{name}.nii.gz"), so a study can list

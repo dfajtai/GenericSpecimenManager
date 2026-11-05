@@ -189,6 +189,24 @@ def configure_segment_editor_defaults(se_cfg):
                 f"active_effect_requested={se_cfg.active_effect}, patched_existing_node={existing_node is not None}")
 
 
+def threshold_attributes(threshold_cfg):
+    """The Segment Editor node attributes that carry the Threshold effect's range: `Threshold.MinimumThreshold` / `Threshold.MaximumThreshold` (an effect parameter is stored on the node as "<EffectName>.<parameter>", read from Slicer's SegmentEditorThresholdEffect and qSlicerSegmentEditorAbstractEffect sources). Only the ends that are set."""
+    attrs = {}
+    if threshold_cfg.min is not None:
+        attrs["Threshold.MinimumThreshold"] = str(threshold_cfg.min)
+    if threshold_cfg.max is not None:
+        attrs["Threshold.MaximumThreshold"] = str(threshold_cfg.max)
+    return attrs
+
+
+def apply_threshold_range(editor_node, threshold_cfg, image_name):
+    """Write an image's default Threshold-effect range onto the Segment Editor node. Done with SetAttribute on the node, NOT through the effect object: touching the live effect (setParameter / updateGUIFromMRML) once froze the GUI (see activate_segment_editor). Slicer's Threshold effect only overwrites the range itself while minimum == maximum (not initialised yet), so a range written here is kept when the source volume changes."""
+    attrs = threshold_attributes(threshold_cfg)
+    for key, value in attrs.items():
+        editor_node.SetAttribute(key, value)
+    logger.info(f"[SegmentEditor] Threshold effect range for '{image_name}': {attrs}")
+
+
 def _source_volume_of(editor_node):
     """The editor node's current source volume node (Slicer 5.2+: GetSourceVolumeNode, older: GetMasterVolumeNode), or None."""
     getter = getattr(editor_node, "GetSourceVolumeNode", None) or getattr(editor_node, "GetMasterVolumeNode", None)
@@ -211,9 +229,10 @@ class SourceVolumeLayerKeeper:
 
     SETTLE_SECONDS = 2.0   # after a source-volume change, layer changes by Slicer itself are corrected for this long
 
-    def __init__(self, editor_node, background_id, foreground_id, foreground_opacity):
-        """Observe `editor_node` (source volume changes) and the slice composite nodes (layer changes); `background_id` / `foreground_id` / `foreground_opacity` are the layers to keep, taken before the source volume was first set."""
+    def __init__(self, editor_node, background_id, foreground_id, foreground_opacity, thresholds=None):
+        """Observe `editor_node` (source volume changes) and the slice composite nodes (layer changes); `background_id` / `foreground_id` / `foreground_opacity` are the layers to keep, taken before the source volume was first set. `thresholds` maps image node ID -> (image name, SegmentEditorThreshold): the Threshold effect range to set when that image becomes the source volume."""
         self._node = editor_node
+        self._thresholds = thresholds or {}
         self._kept = (background_id, foreground_id, foreground_opacity)
         source = _source_volume_of(editor_node)
         self._last_source_id = source.GetID() if source else None
@@ -242,8 +261,15 @@ class SourceVolumeLayerKeeper:
         self._last_source_id = source_id
         self._settle_until = time.monotonic() + self.SETTLE_SECONDS
         logger.info(f"[SourceVolumeLayerKeeper] source volume is now {source.GetName() if source else None}")
+        self.applyThresholdFor(source)
         qt.QTimer.singleShot(0, self.restoreLayers)
         qt.QTimer.singleShot(250, self.restoreLayers)
+
+    def applyThresholdFor(self, source):
+        """If the config gives the source volume `source` a Threshold-effect range, put it on the editor node (an image without one leaves the range as it is)."""
+        entry = self._thresholds.get(source.GetID()) if source is not None else None
+        if entry is not None:
+            apply_threshold_range(self._node, entry[1], entry[0])
 
     def _onCompositeModified(self, _caller=None, _event=None):
         """A slice view's layers changed: shortly after a source-volume change that is Slicer's own re-arrangement - put the wanted layers back if they differ."""
@@ -302,7 +328,7 @@ def _current_slice_layers():
     return None, None, None
 
 
-def activate_segment_editor(se_cfg, segmentation_node, reference_node=None):
+def activate_segment_editor(se_cfg, segmentation_node, reference_node=None, thresholds=None):
     """Switch to the Segment Editor module with the given segmentation
     already selected and configured. Safe (unlike touching a bare template
     node) because we explicitly attach a real segmentation/source volume
@@ -352,7 +378,8 @@ def activate_segment_editor(se_cfg, segmentation_node, reference_node=None):
     if se_cfg.active_effect:
         editorNode.SetActiveEffectName(se_cfg.active_effect)
 
-    keeper = SourceVolumeLayerKeeper(editorNode, *layers)
+    keeper = SourceVolumeLayerKeeper(editorNode, *layers, thresholds=thresholds)
+    keeper.applyThresholdFor(reference_node)   # the first source volume
     keeper.restoreLayers()   # the first source volume (the reference image) also disturbed the layers
 
     # Bring the module into view LAST, once everything above is already

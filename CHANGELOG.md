@@ -4,6 +4,7 @@ Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 
 ## 2026-11-05
 
+- **Segment Editor threshold per image**: an image can carry `segment_editor_threshold: {"min": .., "max": ..}` (Config Editor: Images tab -> *Edit advanced...* -> *Segment Editor: default Threshold range*). The Segment Editor's Threshold effect gets that range when the specimen opens and whenever the image is picked as the source volume. Not the display `threshold`.
 - **Status dot fix**: the dot next to the Active specimen turns green again after a save (the unsaved-changes check now remembers the node state at the last save; Slicer's own flag was not cleared by our safe write).
 - **Close active specimen** first warns when the segmentation / markups have unsaved changes (*Save and close* / *Close* / *Cancel*); then the usual Yes / mark to review / mark finished / No question follows.
 

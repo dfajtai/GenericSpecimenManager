@@ -59,7 +59,7 @@ for exactly how these resolve, group, and what `{index}` does).
 table (name, csv_column, type, role, required, **Preset**
 dropdown populated live from the Presets JSON, **Color table** dropdown (also offers the module's own `gnuplot2` and `inferno`, see the config reference) -
 curated + freely editable, opacity); "Edit advanced..." popup (path_pattern/window_level/
-threshold/interpolate); a live **Effective settings** preview for the
+threshold/segment_editor_threshold/interpolate); a live **Effective settings** preview for the
 selected row; **Move up** / **Move down** reorder the selected row (the order is the load order; a button is disabled when the row is already first/last). A **Default path pattern** field above the table
 (`defaults.image.path_pattern`) finds the file of every image whose CSV column is
 empty or not set - so an image that is not in the preseg CSV can be added as a
