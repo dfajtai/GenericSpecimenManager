@@ -2,6 +2,11 @@
 
 Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 
+## 2026-11-06
+
+- **Platform paths**: the paths in the CSVs (image columns), path patterns and the batch export folder may be written with `/`; they are converted to the running platform's separator (`\` on Windows; a `\`-separated path from a Windows-made CSV is turned into `/` elsewhere). Relative paths stay relative to the study folder.
+- **`study_dir` is relative to the config file**: a relative `study_dir` (e.g. `"."`) used to be taken relative to the current directory of the Slicer process, so `etc/database.csv` was not found; now it is resolved against the config's folder (not set = the config's folder, as before).
+
 ## 2026-11-05
 
 - **Segment Editor threshold per image**: an image can carry `segment_editor_threshold: {"min": .., "max": ..}` (Config Editor: Images tab -> *Edit advanced...* -> *Segment Editor: default Threshold range*). The Segment Editor's Threshold effect gets that range when the specimen opens and whenever the image is picked as the source volume. Not the display `threshold`.

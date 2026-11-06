@@ -69,6 +69,33 @@ class EditorAttributesTest(unittest.TestCase):
         self.assertEqual(editor_attributes(SegmentEditorConfig.from_dict({})), {})
 
 
+class PlatformPathTest(unittest.TestCase):
+    """core/paths.platform_path: "/"-separated CSV paths on any platform."""
+
+    def test_windows_gets_backslashes_and_stays_relative(self):
+        from Resources.core.paths import platform_path
+        self.assertEqual(platform_path("D001/ct/scan.nii.gz", sep="\\"), "D001\\ct\\scan.nii.gz")
+
+    def test_posix_gets_slashes_from_a_windows_made_csv(self):
+        from Resources.core.paths import platform_path
+        self.assertEqual(platform_path("D001\\ct\\scan.nii.gz", sep="/"), "D001/ct/scan.nii.gz")
+        self.assertEqual(platform_path("D001/ct/scan.nii.gz", sep="/"), "D001/ct/scan.nii.gz")
+
+
+class StudyDirTest(unittest.TestCase):
+    """StudyConfig.study_dir: relative to the config's folder, not to the current directory."""
+
+    def test_default_and_dot_are_the_config_folder(self):
+        from Resources.core.config_model import StudyConfig
+        self.assertEqual(StudyConfig.from_dict({}, base_dir="/data/batch1").study_dir, "/data/batch1")
+        self.assertEqual(StudyConfig.from_dict({"study_dir": "."}, base_dir="/data/batch1").study_dir, "/data/batch1")
+
+    def test_relative_is_under_the_config_folder_and_absolute_stays(self):
+        from Resources.core.config_model import StudyConfig
+        self.assertEqual(StudyConfig.from_dict({"study_dir": "../shared"}, base_dir="/data/batch1").study_dir, "/data/shared")
+        self.assertEqual(StudyConfig.from_dict({"study_dir": "/nas/x"}, base_dir="/data/batch1").study_dir, "/nas/x")
+
+
 class SegmentEditorThresholdTest(unittest.TestCase):
     """The per-image Threshold-effect range (images[].segment_editor_threshold)."""
 

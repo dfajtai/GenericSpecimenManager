@@ -17,6 +17,7 @@ from slicer.ScriptedLoadableModule import ScriptedLoadableModuleLogic
 from Resources.core import safe_io
 from Resources.core.config_model import StudyConfig, load_config
 from Resources.core.logging_setup import logger
+from Resources.core.paths import platform_path
 from Resources.definitions import DB_BACKUPS_KEEP, DB_BACKUP_MIN_INTERVAL_SECONDS
 from Resources.study.specimen import GenericSpecimen
 from Resources.utils.segment_editor import configure_segment_editor_defaults
@@ -52,6 +53,7 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         """Resolve rel against study_dir if it isn't already absolute."""
         if not rel:
             return rel
+        rel = platform_path(rel)
         return rel if os.path.isabs(rel) else os.path.join(self.study_dir, rel)
 
     def setDefaultParameters(self, parameterNode):

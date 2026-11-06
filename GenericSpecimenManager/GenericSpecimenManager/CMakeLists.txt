@@ -24,6 +24,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/core/logging_setup.py
   Resources/core/naming.py
   Resources/core/pattern_check.py
+  Resources/core/paths.py
   Resources/core/safe_io.py
   Resources/core/status.py
   Resources/definitions.py

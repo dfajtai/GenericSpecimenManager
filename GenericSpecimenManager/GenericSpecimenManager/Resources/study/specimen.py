@@ -19,6 +19,7 @@ from Resources.core.config_model import (
     merge_segment_overrides,
 )
 from Resources.core.logging_setup import logger
+from Resources.core.paths import platform_path
 from Resources.core.status import parse_status
 from Resources.definitions import IMAGES_READ_ONLY_BY_DEFAULT, KEEP_PREVIOUS_SPECIMEN_FILES
 from Resources.utils.color_tables import builtin_color_node
@@ -67,7 +68,7 @@ class GenericSpecimen:
     @property
     def out_dir(self):
         """This specimen's output folder under study_dir, built from output_dir_pattern - a curly-brace format string (e.g. "{ID}/{measurement}"), same placeholder rules as any other path_pattern in this schema."""
-        rel = self._format(self.cfg.output_dir_pattern, what="output_dir_pattern")
+        rel = platform_path(self._format(self.cfg.output_dir_pattern, what="output_dir_pattern"))
         return os.path.join(self.study_dir, rel)
 
     def _context(self, extra=None):
@@ -91,8 +92,8 @@ class GenericSpecimen:
             raise ValueError(f"{what} '{pattern}' is not a valid pattern: {e}") from None
 
     def _to_abs(self, rel):
-        """Resolve a path to absolute: study_dir-relative unless already absolute. Also collapses an accidental doubled path separator (e.g. from a CSV value that already had a leading slash)."""
-        rel = str(rel).replace(2 * os.sep, os.sep)
+        """Resolve a path to absolute: study_dir-relative unless already absolute. Separators are converted to this platform's (CSV values and patterns use "/"), and an accidental doubled separator (e.g. from a CSV value that already had a leading slash) is collapsed."""
+        rel = platform_path(rel).replace(2 * os.sep, os.sep)
         if os.path.isabs(rel):
             return rel
         return os.path.join(self.study_dir, rel)

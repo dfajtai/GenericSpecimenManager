@@ -13,6 +13,7 @@ import slicer
 import vtk
 
 from Resources.core.logging_setup import logger
+from Resources.core.paths import platform_path
 from Resources.utils.slicer_ui import NullProgress
 from Resources.definitions import DEFAULT_STATS_METRICS, SpecimenStatus, SPECIMEN_STATUS_LABELS
 
@@ -302,7 +303,7 @@ class BatchProcessor:
 
     def _resolve_root(self):
         """batch_export.output_dir - the shared, optional ROOT for this whole batch run: unset -> study_dir; relative -> resolved under study_dir; absolute -> used as-is. Used both for segment/markup export (further combined with output_dir_pattern below) and as the anchor for the statistics pattern - the one thing genuinely shared between them."""
-        root = self.be_cfg.output_dir
+        root = platform_path(self.be_cfg.output_dir or "")
         if not root:
             return self.logic.study_dir
         if not os.path.isabs(root):

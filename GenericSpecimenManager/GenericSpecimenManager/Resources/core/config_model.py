@@ -41,6 +41,8 @@ import json
 from dataclasses import dataclass, field, fields
 from typing import Optional, List, Dict, Any
 
+from Resources.core.paths import platform_path
+
 
 # ---------------------------------------------------------------------------
 # generic helpers
@@ -584,7 +586,7 @@ class StudyConfig:
         status_column = raw.get("status_column", "status")
 
         return cls(
-            study_dir=raw.get("study_dir", base_dir),
+            study_dir=_study_dir(raw.get("study_dir"), base_dir),
             database_csv_path=raw.get("database_csv_path", ""),
             preseg_csv_path=raw.get("preseg_csv_path", ""),
             key_columns=list(key_columns),
@@ -609,6 +611,14 @@ class StudyConfig:
             status_filter=StatusFilterConfig.from_dict(raw.get("status_filter")),
             factor_columns=[FactorColumnConfig.from_dict(d) for d in (raw.get("factor_columns") or [])],
         )
+
+
+def _study_dir(value, base_dir):
+    """The study folder: the config's own folder when not set, a relative `study_dir` (e.g. ".") resolved against the config's folder - not against the current directory of whatever process runs Slicer - and an absolute one as it is. "/" or "\\" separators are converted to the platform's."""
+    if not value:
+        return base_dir
+    value = platform_path(value)
+    return value if os.path.isabs(value) else os.path.normpath(os.path.join(base_dir, value))
 
 
 def load_config(path: str) -> StudyConfig:

@@ -2,6 +2,8 @@
 
 The complete `config.json` schema (1:1 with `core/config_model.py`) and a key reference table: every named parameter, where to set it, what it does.
 
+**Paths** in the CSVs, the path patterns and `batch_export.output_dir` are written with `/`; the module converts them to the running platform's separator (`\` on Windows). Relative paths stay relative to `study_dir`.
+
 ## Config schema (complete, 1:1 with `core/config_model.py`)
 
 ```jsonc
