@@ -525,12 +525,13 @@ class SegmentEditorConfig:
     editable_area: Optional[str] = None      # None = leave Slicer's setting alone (it is "everywhere") | "everywhere" | "inside_all_segments" | "inside_visible_segments" | "outside_all_segments" | "outside_visible_segments"
     brush: Optional[BrushConfig] = None
     active_effect: Optional[str] = None
+    source_volume_to_foreground: Optional[bool] = None   # None/True = the module shows the Segment Editor's source volume as the slice views' foreground (reference stays background) | False = the module does not touch the layers: Slicer's own behaviour (source volume -> background, foreground cleared)
     editable_intensity_range: Dict[str, IntensityRange] = field(default_factory=dict)   # effect name ("Paint" / "Erase") -> range, switched on when that effect becomes active
     attributes: Dict[str, Any] = field(default_factory=dict)
 
     def is_configured(self) -> bool:
         """True if any field here was actually set in the config - used to decide whether to touch the Segment Editor at all (an all-default/empty block means 'leave Slicer's own defaults alone')."""
-        return bool(self.overwrite_mode or self.editable_area or self.brush or self.active_effect or self.editable_intensity_range or self.attributes)
+        return bool(self.overwrite_mode or self.editable_area or self.brush or self.active_effect or self.source_volume_to_foreground is not None or self.editable_intensity_range or self.attributes)
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):

@@ -251,9 +251,11 @@ class SourceVolumeLayerKeeper:
 
     SETTLE_SECONDS = 2.0   # after a source-volume change, layer changes by Slicer itself are corrected for this long
 
-    def __init__(self, editor_node, background_id, foreground_id, foreground_opacity, thresholds=None, intensity_ranges=None):
-        """Observe `editor_node` (source volume changes) and the slice composite nodes (layer changes); `background_id` / `foreground_id` / `foreground_opacity` are the layers to keep, taken before the source volume was first set. `thresholds` maps image node ID -> (image name, SegmentEditorThreshold): the Threshold effect range to set when that image becomes the source volume. `intensity_ranges` maps effect name -> IntensityRange: the Editable intensity range to set when that effect becomes the active one."""
+    def __init__(self, editor_node, background_id, foreground_id, foreground_opacity, thresholds=None, intensity_ranges=None,
+                 follow_layers=True):
+        """Observe `editor_node` (source volume changes) and the slice composite nodes (layer changes); `background_id` / `foreground_id` / `foreground_opacity` are the layers to keep, taken before the source volume was first set. `thresholds` maps image node ID -> (image name, SegmentEditorThreshold): the Threshold effect range to set when that image becomes the source volume. `intensity_ranges` maps effect name -> IntensityRange: the Editable intensity range to set when that effect becomes the active one. With follow_layers=False (segment_editor.source_volume_to_foreground: false) the keeper does not touch the slice-view layers at all - Slicer's own behaviour for a picked source volume stays as it is - and only does the threshold / intensity-range work."""
         self._node = editor_node
+        self._follow_layers = follow_layers
         self._thresholds = thresholds or {}
         self._intensity_ranges = intensity_ranges or {}
         self._last_effect = editor_node.GetActiveEffectName()
@@ -308,7 +310,7 @@ class SourceVolumeLayerKeeper:
 
     def _onCompositeModified(self, _caller=None, _event=None):
         """A slice view's layers changed: shortly after a source-volume change that is Slicer's own re-arrangement - put the wanted layers back if they differ."""
-        if self._fixing or time.monotonic() > self._settle_until:
+        if not self._follow_layers or self._fixing or time.monotonic() > self._settle_until:
             return
         wanted = self._wanted_layers()
         if wanted is None:
@@ -335,7 +337,7 @@ class SourceVolumeLayerKeeper:
 
     def restoreLayers(self):
         """Put the kept background back and the source volume into the foreground (or the kept foreground, if the source is the background itself)."""
-        if self._fixing:
+        if not self._follow_layers or self._fixing:
             return
         wanted = self._wanted_layers()
         if wanted is None:
@@ -381,6 +383,8 @@ def activate_segment_editor(se_cfg, segmentation_node, reference_node=None, thre
         logger.warning(f"[GenericSpecimen] could not access the Segment Editor widget: {e}")
         return
 
+    follow_layers = se_cfg.source_volume_to_foreground is not False   # False: leave the layers to Slicer's own source-volume handling
+
     segmentEditorWidget.setSegmentationNode(segmentation_node)
 
     if reference_node is not None:
@@ -413,7 +417,8 @@ def activate_segment_editor(se_cfg, segmentation_node, reference_node=None, thre
     if se_cfg.active_effect:
         editorNode.SetActiveEffectName(se_cfg.active_effect)
 
-    keeper = SourceVolumeLayerKeeper(editorNode, *layers, thresholds=thresholds, intensity_ranges=se_cfg.editable_intensity_range)
+    keeper = SourceVolumeLayerKeeper(editorNode, *layers, thresholds=thresholds, intensity_ranges=se_cfg.editable_intensity_range,
+                                     follow_layers=follow_layers)
     keeper.applyThresholdFor(reference_node)   # the first source volume
     keeper.applyIntensityRange()               # the effect that is active from the start
     keeper.restoreLayers()   # the first source volume (the reference image) also disturbed the layers

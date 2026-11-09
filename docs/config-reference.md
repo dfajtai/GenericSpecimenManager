@@ -89,6 +89,7 @@ The complete `config.json` schema (1:1 with `core/config_model.py`) and a key re
     "editable_area": "everywhere", // omit = leave Slicer's setting alone (it is "everywhere") | "inside_all_segments" | "inside_visible_segments" | "outside_all_segments" | "outside_visible_segments"
     "brush": { "shape": "sphere", "diameter_mm": 5, "relative": false },
     "active_effect": "Paint",
+    "source_volume_to_foreground": true,          // default true: the Segment Editor's source volume is shown as the slice views' foreground and the reference image stays background. false = the module leaves the layers alone (Slicer's own behaviour: source volume -> background, foreground cleared)
     "editable_intensity_range": {                 // Editable intensity range, set when the effect becomes active (Slicer has ONE range for all effects, so it is rewritten on every switch; other effects keep the last one)
       "Paint": {"min": -50, "max": 100},          // an end left out = the source volume's own end
       "Erase": {"min": -1024, "max": -60} },

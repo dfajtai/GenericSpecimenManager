@@ -42,6 +42,18 @@ class SegmentEditorTabMixin:
         maskingForm.addRow("Modify other segments:", self.overwriteModeCombo)
         layout.addWidget(maskingGroup)
 
+        layersGroup = qt.QGroupBox("Slice view layers")
+        layersLayout = qt.QVBoxLayout(layersGroup)
+        self.chkSourceToForeground = qt.QCheckBox("Show the source volume as the foreground")
+        self.chkSourceToForeground.checked = True
+        self.chkSourceToForeground.setToolTip(
+            "<html>Checked (default): the image picked as the Segment Editor's source volume is shown as the slice views' foreground "
+            "and the reference image stays the background (segment_editor.source_volume_to_foreground).<br>"
+            "Unchecked: the module does not touch the layers - Slicer's own behaviour applies (the picked source volume goes to the "
+            "background, the foreground is cleared).</html>")
+        layersLayout.addWidget(self.chkSourceToForeground)
+        layout.addWidget(layersGroup)
+
         rangeGroup = qt.QGroupBox("Editable intensity range")
         rangeForm = qt.QFormLayout(rangeGroup)
         rangeGroup.setToolTip(
@@ -112,6 +124,7 @@ class SegmentEditorTabMixin:
         self.brushDiameterEdit.text = "" if brush.get("diameter_mm") is None else str(brush["diameter_mm"])
         self.chkBrushAbsolute.checked = not bool(brush.get("relative"))
         set_combo_value(self.activeEffectEdit, se.get("active_effect", "") or "")
+        self.chkSourceToForeground.checked = se.get("source_volume_to_foreground") is not False
         ranges = se.get("editable_intensity_range") or {}
         for effect, (minEdit, maxEdit) in self.intensityRangeEdits.items():
             r = ranges.get(effect) or {}
@@ -134,7 +147,8 @@ class SegmentEditorTabMixin:
             r = {k: v for k, v in (("min", to_float(minEdit.text)), ("max", to_float(maxEdit.text))) if v is not None}
             if r:
                 intensity[effect] = r
-        if overwrite or editable_area or brush_shape or diameter is not None or active_effect or intensity or se_attrs:
+        source_to_foreground = self.chkSourceToForeground.checked
+        if overwrite or editable_area or brush_shape or diameter is not None or active_effect or intensity or se_attrs or not source_to_foreground:
             se = {}
             if overwrite:
                 se["overwrite_mode"] = overwrite
@@ -150,6 +164,8 @@ class SegmentEditorTabMixin:
                 se["brush"] = brush
             if active_effect:
                 se["active_effect"] = active_effect
+            if not source_to_foreground:
+                se["source_volume_to_foreground"] = False   # on is the default, so only "off" is written
             if intensity:
                 se["editable_intensity_range"] = intensity
             if se_attrs:
@@ -162,6 +178,7 @@ class SegmentEditorTabMixin:
         self.brushDiameterEdit.text = ""
         set_combo_value(self.activeEffectEdit, "")
         self.chkBrushAbsolute.checked = True
+        self.chkSourceToForeground.checked = True
         for minEdit, maxEdit in self.intensityRangeEdits.values():
             minEdit.text = ""
             maxEdit.text = ""

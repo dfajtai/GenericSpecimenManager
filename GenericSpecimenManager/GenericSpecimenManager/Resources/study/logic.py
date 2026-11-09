@@ -97,14 +97,14 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
                 self._db_signature = safe_io.file_signature(db_path)
                 self._db_signature_path = db_path
         except slicer.util.MRMLNodeNotFoundException:
-            self.dbTable = slicer.util.loadTable(db_path)
+            self.dbTable = self._load_text_table(db_path)
             self._db_signature = safe_io.file_signature(db_path)
             self._db_signature_path = db_path
         try:
             node = slicer.util.getNode(self.get_node_if_loaded(preseg_path))
             self.presegTable = node
         except slicer.util.MRMLNodeNotFoundException:
-            self.presegTable = slicer.util.loadTable(preseg_path)
+            self.presegTable = self._load_text_table(preseg_path)
 
         self.dbDictList, self.dbColumnNames = self._table_to_dicts(self.dbTable, return_columns=True)
         self.presegDictList = self._table_to_dicts(self.presegTable)
@@ -134,6 +134,38 @@ class GenericSpecimenManagerLogic(ScriptedLoadableModuleLogic):
         if not col:
             return []
         return sorted({s.db_info.get(col, "") for s in self.specimens.values()} - {""})
+
+    def _load_text_table(self, path):
+        """slicer.util.loadTable(), then EVERY column turned into a text column holding the CSV's own text. Why: Slicer's CSV reader types a column by its content - an empty or all-numeric column (a `comment` nobody filled in yet, a `has_air` of 0/1, ids like 007) becomes a number column, and writing text into it (SetCellText) stores 0 - in the table, in the overview and, on save, in database.csv. The text is taken from the file with Python's csv module; if the loaded table does not match the file (other header / row count) the table is left as Slicer made it and a warning is logged."""
+        node = slicer.util.loadTable(path)
+        try:
+            with open(path, "r", encoding="utf-8-sig", newline="") as f:
+                rows = list(csv.reader(f))
+            table = node.GetTable()
+            ncol, nrow = table.GetNumberOfColumns(), table.GetNumberOfRows()
+            names = [table.GetColumnName(j) for j in range(ncol)]
+            header, data = (rows[0] if rows else []), rows[1:]
+            if header != names or len(data) != nrow:
+                logger.warning(f"[GenericSpecimenManager] '{path}': the loaded table does not match the file (columns {len(names)} vs {len(header)}, "
+                               f"rows {nrow} vs {len(data)}) - its columns keep the types Slicer gave them")
+                return node
+            columns = []
+            for j, name in enumerate(names):
+                col = vtk.vtkStringArray()
+                col.SetName(name)
+                col.SetNumberOfValues(nrow)
+                for i, record in enumerate(data):
+                    col.SetValue(i, record[j] if j < len(record) else "")
+                columns.append(col)
+            was_modified = node.StartModify()
+            while table.GetNumberOfColumns() > 0:
+                table.RemoveColumn(0)
+            for col in columns:
+                table.AddColumn(col)
+            node.EndModify(was_modified)
+        except Exception as e:
+            logger.warning(f"[GenericSpecimenManager] could not make the columns of '{path}' text columns: {e}")
+        return node
 
     def _table_to_dicts(self, table, return_columns=False):
         """Convert a loaded vtkMRMLTableNode into a list of {column_name: value} dicts (optionally also returning the raw, ordered column name list, needed for name-based cell write-back)."""

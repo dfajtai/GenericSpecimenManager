@@ -144,6 +144,7 @@
   <li>an already-<b>live</b> Segment Editor node, if one already exists (you opened the module earlier).</li>
   </ul>
 </li>
+<li><b>Show the source volume as the foreground</b> - ticked (default): the source volume picked in the Segment Editor is shown as the foreground layer and the reference image stays the background. Unticked (<code>"source_volume_to_foreground": false</code>): the module does not touch the layers; Slicer's own behaviour applies (the picked source volume goes to the background, the foreground is cleared).</li>
 <li><b>Editable intensity range</b> - a range per brush effect (Paint, Erase): when that effect becomes active, the Segment Editor's <i>Editable intensity range</i> is switched on with these values (only voxels of the source volume inside the range can be changed), e.g. Paint <code>-50..100</code>, Erase <code>-1024..-60</code>. An end left empty = the source volume's own end; both empty = that effect does not touch the range. Slicer has one range for all effects, so it is rewritten whenever you switch between them.</li>
 <li><b>Active effect on load</b> - which effect (e.g. <code>Paint</code>) should already be selected. Left empty, the user just picks an effect manually - the brush size/shape above still applies whenever they pick Paint.</li>
 </ul>
