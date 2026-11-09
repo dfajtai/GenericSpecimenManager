@@ -284,8 +284,8 @@ class SpecimenTableMixin:
         key or batch. Reads row/col straight off the item the itemChanged signal actually handed
         us - NOT off the current table selection, which (since the table moved to whole-row
         selection) no longer reliably identifies which single cell/checkbox was just toggled.
-        Covers plain text cells AND checkbox cells (a binary factor column - detected via
-        the item's own checkable flag, not a hardcoded column check) - a multilevel factor
+        Covers plain text cells AND checkbox cells (a binary factor column - detected from cfg.factor_columns,
+        NOT from the item's checkable flag, which every table item has by default) - a multilevel factor
         column's dropdown is a cell WIDGET instead, which doesn't fire itemChanged at all; see
         _onFactorMultilevelChanged() for that path. Auto-saves the database CSV to disk right
         after, if Auto-save database is checked."""
@@ -312,7 +312,11 @@ class SpecimenTableMixin:
                 return
             real_col = self.logic.dbColumnNames.index(col_name)
             edited_item = tbl.item(row, col)
-            if edited_item is not None and bool(edited_item.flags() & qt.Qt.ItemIsUserCheckable):
+            # A checkbox cell is told apart by the CONFIG (a binary factor column), not by the item's flags: a plain QTableWidgetItem
+            # has Qt.ItemIsUserCheckable set by default, so the flag test took every text cell (e.g. comment) for a checkbox and
+            # wrote "0" (its check state) instead of the typed text.
+            is_checkbox = any(fc.column == col_name and fc.type == "binary" for fc in cfg.factor_columns)
+            if edited_item is not None and is_checkbox:
                 val = "1" if edited_item.checkState() == qt.Qt.Checked else "0"
             else:
                 val = edited_item.text() if edited_item is not None else ""

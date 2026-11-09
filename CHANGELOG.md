@@ -4,7 +4,7 @@ Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 
 ## 2026-11-09
 
-- **Fix: text typed into the database table became 0**: Slicer's CSV reader types a column by its content, so an empty or all-numeric column (e.g. a `comment` nobody filled in) turned into a number column and any text written into it was stored as 0 - in the table, the overview and `database.csv`. The database and preseg tables now load with text columns only.
+- **Fix: text typed into a table cell (e.g. `comment`) was saved as 0**: the write-back took every cell for a checkbox, because a plain table item has the "user checkable" flag by default, and wrote its check state (`0`) instead of the text. A checkbox is now recognised from the config (binary factor column).
 - **Switch for the foreground following in the Segment Editor**: `segment_editor.source_volume_to_foreground: false` (Config Editor: *Slice view layers* checkbox) stops the module from putting the source volume into the foreground; Slicer's own behaviour applies then. The default (on) is unchanged.
 - **Config Editor and relative paths**: a relative Study dir / preseg CSV / database CSV is resolved against the config file's folder (it used to be the process's current directory, and the editor wrote `study_dir: "etc"` for a relative preseg path, which doubled to `etc/etc/...`). With a relative preseg path and no Study dir, `study_dir` is no longer written (the module then uses the config's folder).
 - **Auto-parse with relative paths**: the preseg CSV is read again whenever the Study dir or the output config path changes (they decide where a relative path points); an unreadable file is named in the field's tooltip.
