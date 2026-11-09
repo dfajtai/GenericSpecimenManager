@@ -216,9 +216,16 @@ class ImagesTabMixin:
         self._quickAddDialog.accept()
 
     def _onOpenQuickAdd(self):
-        """Show the quick-add popup (modal) - or explain what's missing if the preseg CSV hasn't been read yet."""
+        """Show the quick-add popup (modal). The preseg CSV's header is read right now from the General tab's current path, so this works whether or not anything on the General tab triggered a parse before; it explains what is missing if nothing can be read."""
+        preseg_text = self.presegEdit.text.strip()
+        if preseg_text:
+            self._onPresegChanged(self._resolveCsvPath(preseg_text))
         if self.quickColumnsTable.rowCount == 0:
-            qt.QMessageBox.information(self, "Config Editor", "No columns to offer yet - set the preseg CSV on the General tab first (key columns are left out).")
+            qt.QMessageBox.information(
+                self, "Config Editor",
+                "No columns to offer - " + (f"the preseg CSV could not be read:\n{self._resolveCsvPath(preseg_text)}\n\nCheck the path and Study dir on the General tab."
+                                           if preseg_text else "set the preseg CSV on the General tab first")
+                + " (key columns are left out).")
             return
         self._quickAddDialog.exec_()
 

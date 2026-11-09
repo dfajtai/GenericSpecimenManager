@@ -207,6 +207,28 @@ def apply_threshold_range(editor_node, threshold_cfg, image_name):
     logger.info(f"[SegmentEditor] Threshold effect range for '{image_name}': {attrs}")
 
 
+def intensity_range_values(range_cfg, volume_range):
+    """(low, high) to set as the Editable intensity range: the configured ends, an end left out taken from `volume_range` (the source volume's own scalar range, or None if unknown - then both ends must be configured, else None is returned)."""
+    low = range_cfg.min if range_cfg.min is not None else (volume_range[0] if volume_range else None)
+    high = range_cfg.max if range_cfg.max is not None else (volume_range[1] if volume_range else None)
+    return None if low is None or high is None else (low, high)
+
+
+def apply_intensity_range(editor_node, range_cfg, effect_name, source_node):
+    """Switch the Segment Editor's Editable intensity range on and set it for the effect that just became active. Slicer has ONE such range per editor node, shared by all effects (SourceVolumeIntensityMask / SourceVolumeIntensityMaskRange, the same two values the Threshold effect's 'Use for masking' sets), so a per-effect range means rewriting it whenever the active effect changes. Written on the node, not through the effect object (see apply_threshold_range)."""
+    volume_range = None
+    image = source_node.GetImageData() if source_node is not None else None
+    if image is not None:
+        volume_range = image.GetScalarRange()
+    values = intensity_range_values(range_cfg, volume_range)
+    if values is None:
+        logger.warning(f"[SegmentEditor] editable intensity range for {effect_name} not set: one end is missing and there is no source volume to take it from")
+        return
+    editor_node.SetSourceVolumeIntensityMask(True)
+    editor_node.SetSourceVolumeIntensityMaskRange(values[0], values[1])
+    logger.info(f"[SegmentEditor] editable intensity range for {effect_name}: {values[0]} .. {values[1]}")
+
+
 def _source_volume_of(editor_node):
     """The editor node's current source volume node (Slicer 5.2+: GetSourceVolumeNode, older: GetMasterVolumeNode), or None."""
     getter = getattr(editor_node, "GetSourceVolumeNode", None) or getattr(editor_node, "GetMasterVolumeNode", None)
@@ -229,10 +251,12 @@ class SourceVolumeLayerKeeper:
 
     SETTLE_SECONDS = 2.0   # after a source-volume change, layer changes by Slicer itself are corrected for this long
 
-    def __init__(self, editor_node, background_id, foreground_id, foreground_opacity, thresholds=None):
-        """Observe `editor_node` (source volume changes) and the slice composite nodes (layer changes); `background_id` / `foreground_id` / `foreground_opacity` are the layers to keep, taken before the source volume was first set. `thresholds` maps image node ID -> (image name, SegmentEditorThreshold): the Threshold effect range to set when that image becomes the source volume."""
+    def __init__(self, editor_node, background_id, foreground_id, foreground_opacity, thresholds=None, intensity_ranges=None):
+        """Observe `editor_node` (source volume changes) and the slice composite nodes (layer changes); `background_id` / `foreground_id` / `foreground_opacity` are the layers to keep, taken before the source volume was first set. `thresholds` maps image node ID -> (image name, SegmentEditorThreshold): the Threshold effect range to set when that image becomes the source volume. `intensity_ranges` maps effect name -> IntensityRange: the Editable intensity range to set when that effect becomes the active one."""
         self._node = editor_node
         self._thresholds = thresholds or {}
+        self._intensity_ranges = intensity_ranges or {}
+        self._last_effect = editor_node.GetActiveEffectName()
         self._kept = (background_id, foreground_id, foreground_opacity)
         source = _source_volume_of(editor_node)
         self._last_source_id = source.GetID() if source else None
@@ -254,16 +278,27 @@ class SourceVolumeLayerKeeper:
 
     def _onNodeModified(self, _caller=None, _event=None):
         """The editor node changed (it does for many reasons): act only if the source volume really is a different one now."""
+        effect = self._node.GetActiveEffectName()
+        if effect != self._last_effect:
+            self._last_effect = effect
+            self.applyIntensityRange()
         source = _source_volume_of(self._node)
         source_id = source.GetID() if source else None
         if source_id == self._last_source_id:
             return
         self._last_source_id = source_id
+        self.applyIntensityRange()   # an end left out of the range comes from the new source volume
         self._settle_until = time.monotonic() + self.SETTLE_SECONDS
         logger.info(f"[SourceVolumeLayerKeeper] source volume is now {source.GetName() if source else None}")
         self.applyThresholdFor(source)
         qt.QTimer.singleShot(0, self.restoreLayers)
         qt.QTimer.singleShot(250, self.restoreLayers)
+
+    def applyIntensityRange(self):
+        """If the config gives the active effect an Editable intensity range, put it on the editor node (other effects leave the range as it is)."""
+        range_cfg = self._intensity_ranges.get(self._node.GetActiveEffectName() or "")
+        if range_cfg is not None:
+            apply_intensity_range(self._node, range_cfg, self._node.GetActiveEffectName(), _source_volume_of(self._node))
 
     def applyThresholdFor(self, source):
         """If the config gives the source volume `source` a Threshold-effect range, put it on the editor node (an image without one leaves the range as it is)."""
@@ -378,8 +413,9 @@ def activate_segment_editor(se_cfg, segmentation_node, reference_node=None, thre
     if se_cfg.active_effect:
         editorNode.SetActiveEffectName(se_cfg.active_effect)
 
-    keeper = SourceVolumeLayerKeeper(editorNode, *layers, thresholds=thresholds)
+    keeper = SourceVolumeLayerKeeper(editorNode, *layers, thresholds=thresholds, intensity_ranges=se_cfg.editable_intensity_range)
     keeper.applyThresholdFor(reference_node)   # the first source volume
+    keeper.applyIntensityRange()               # the effect that is active from the start
     keeper.restoreLayers()   # the first source volume (the reference image) also disturbed the layers
 
     # Bring the module into view LAST, once everything above is already

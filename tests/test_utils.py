@@ -82,6 +82,35 @@ class PlatformPathTest(unittest.TestCase):
         self.assertEqual(platform_path("D001/ct/scan.nii.gz", sep="/"), "D001/ct/scan.nii.gz")
 
 
+class IntensityRangeTest(unittest.TestCase):
+    """segment_editor.editable_intensity_range: parsing and the value to set."""
+
+    def test_parsed_per_effect_and_empty_entries_dropped(self):
+        cfg = SegmentEditorConfig.from_dict({"editable_intensity_range": {"Paint": {"min": -50, "max": 100}, "Erase": {}}})
+        self.assertEqual(list(cfg.editable_intensity_range), ["Paint"])
+        self.assertEqual((cfg.editable_intensity_range["Paint"].min, cfg.editable_intensity_range["Paint"].max), (-50, 100))
+        self.assertTrue(cfg.is_configured())
+
+    def test_a_missing_end_comes_from_the_volume_range(self):
+        from Resources.core.config_model import IntensityRange
+        from Resources.utils.segment_editor import intensity_range_values
+        self.assertEqual(intensity_range_values(IntensityRange(min=-50, max=100), (-1024, 3000)), (-50, 100))
+        self.assertEqual(intensity_range_values(IntensityRange(max=-60), (-1024, 3000)), (-1024, -60))
+        self.assertIsNone(intensity_range_values(IntensityRange(max=-60), None))
+
+
+class SegmentVisibleTest(unittest.TestCase):
+    """segments[].visible parsing and merging with defaults.segment."""
+
+    def test_visible_is_parsed_and_merged(self):
+        from Resources.core.config_model import SegmentConfig, merge_segment_overrides
+        hidden = SegmentConfig.from_dict({"name": "helper", "visible": False})
+        self.assertIs(hidden.visible, False)
+        self.assertIsNone(SegmentConfig.from_dict({"name": "liver"}).visible)
+        merged = merge_segment_overrides(SegmentConfig.from_dict({"visible": False}), SegmentConfig.from_dict({"name": "x"}))
+        self.assertIs(merged.visible, False)
+
+
 class StudyDirTest(unittest.TestCase):
     """StudyConfig.study_dir: relative to the config's folder, not to the current directory."""
 
@@ -89,6 +118,12 @@ class StudyDirTest(unittest.TestCase):
         from Resources.core.config_model import StudyConfig
         self.assertEqual(StudyConfig.from_dict({}, base_dir="/data/batch1").study_dir, "/data/batch1")
         self.assertEqual(StudyConfig.from_dict({"study_dir": "."}, base_dir="/data/batch1").study_dir, "/data/batch1")
+
+    def test_a_relative_config_folder_still_gives_an_absolute_study_dir(self):
+        from Resources.core.config_model import StudyConfig
+        study_dir = StudyConfig.from_dict({"study_dir": "."}, base_dir="etc").study_dir
+        self.assertEqual(study_dir, os.path.abspath("etc"))
+        self.assertEqual(StudyConfig.from_dict({}, base_dir="./etc").study_dir, os.path.abspath("etc"))
 
     def test_relative_is_under_the_config_folder_and_absolute_stays(self):
         from Resources.core.config_model import StudyConfig

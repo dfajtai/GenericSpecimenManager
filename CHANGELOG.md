@@ -2,6 +2,15 @@
 
 Newest first. Planned work is in the [roadmap](docs/roadmap.md).
 
+## 2026-11-09
+
+- **Config Editor and relative paths**: a relative Study dir / preseg CSV / database CSV is resolved against the config file's folder (it used to be the process's current directory, and the editor wrote `study_dir: "etc"` for a relative preseg path, which doubled to `etc/etc/...`). With a relative preseg path and no Study dir, `study_dir` is no longer written (the module then uses the config's folder).
+- **Auto-parse with relative paths**: the preseg CSV is read again whenever the Study dir or the output config path changes (they decide where a relative path points); an unreadable file is named in the field's tooltip.
+- **Quick add from preseg columns** reads the preseg CSV header itself when opened, so it works even if the General tab never triggered a parse.
+- **Fix: relative study root**: the study folder is now always absolute (config folder via its absolute path; a relative `study_dir` is resolved against it), so a config opened by a relative path no longer gives `etc/etc/database.csv`.
+- **Editable intensity range per brush effect**: `segment_editor.editable_intensity_range: {"Paint": {"min": -50, "max": 100}, "Erase": {"min": -1024, "max": -60}}` - the Segment Editor's Editable intensity range is switched on and set when that effect becomes active (an end left out is taken from the source volume). Config Editor: *Editable intensity range* group on the Segment editor tab.
+- **Segment visibility**: a segment can be hidden when a specimen opens - `visible: false` on a `segmentation.segments[]` entry (or in `defaults.segment`); Config Editor: a **Visible** checkbox column on the Segmentation tab. Applied only when the segmentation is built from scratch (nothing saved yet), matched by segment name; a saved segmentation is loaded as it is. Only the display changes.
+
 ## 2026-11-06
 
 - **Platform paths**: the paths in the CSVs (image columns), path patterns and the batch export folder may be written with `/`; they are converted to the running platform's separator (`\` on Windows; a `\`-separated path from a Windows-made CSV is turned into `/` elsewhere). Relative paths stay relative to the study folder.

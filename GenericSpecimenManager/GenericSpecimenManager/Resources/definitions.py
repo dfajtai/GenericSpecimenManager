@@ -177,6 +177,9 @@ SEGMENT_EDITOR_EFFECT_CHOICES = [
     "SplitVolume", "FloodFilling", "LocalThreshold", "WrapSolidify",
 ]
 
+# Brush effects that can get their own Editable intensity range (segment_editor.editable_intensity_range keys = Slicer's effect names).
+INTENSITY_RANGE_EFFECTS = ["Paint", "Erase"]
+
 CROSSHAIR_MODE_CHOICES = [
     "(unset)", "NoCrosshair", "ShowBasic", "ShowIntersection", "ShowHashmarks",
     "ShowAll", "ShowSmallBasic", "ShowSmallIntersection",

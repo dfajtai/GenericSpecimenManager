@@ -44,7 +44,7 @@ The complete `config.json` schema (1:1 with `core/config_model.py`) and a key re
     "path_pattern": "{ID}/{segment_name}.nii.gz",   // default naming, overridable per segment
     "segments": [
       { "name": "liver", "csv_column": "liver_path", "color": [0.8,0.1,0.1] },  // source: "file" (default)
-      { "name": "tumor", "source": "empty", "color": [1,1,0] }                   // never tries a file
+      { "name": "tumor", "source": "empty", "color": [1,1,0], "visible": false }  // never tries a file; "visible": false = hidden when the segmentation is first built (omit = Slicer's default, shown); a saved segmentation is not touched
     ],
     "output_filename": "segment.seg.nrrd",
     "opacity": 0.5                                 // whole-segmentation display opacity 0-1; omit = 1
@@ -89,6 +89,9 @@ The complete `config.json` schema (1:1 with `core/config_model.py`) and a key re
     "editable_area": "everywhere", // omit = leave Slicer's setting alone (it is "everywhere") | "inside_all_segments" | "inside_visible_segments" | "outside_all_segments" | "outside_visible_segments"
     "brush": { "shape": "sphere", "diameter_mm": 5, "relative": false },
     "active_effect": "Paint",
+    "editable_intensity_range": {                 // Editable intensity range, set when the effect becomes active (Slicer has ONE range for all effects, so it is rewritten on every switch; other effects keep the last one)
+      "Paint": {"min": -50, "max": 100},          // an end left out = the source volume's own end
+      "Erase": {"min": -1024, "max": -60} },
     "attributes": { "BrushSphere": "1" }    // escape hatch, see the key format note below
   }
 }

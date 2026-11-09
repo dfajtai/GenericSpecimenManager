@@ -102,7 +102,10 @@ class ConfigEditorDialog(qt.QDialog, GeneralTabMixin, BatchExportTabMixin, Image
         tabs.addTab(self._buildAdvancedTab(), "Defaults / Presets (JSON)")
         tabs.addTab(self._buildManualTab(), "Manual edit config")
 
-        self.outputEdit, outputRow = self._fileRow(filter_="JSON files (*.json)", save=True, default_name="config.json")
+        # the config file's folder is what a relative Study dir / CSV path points from, so a changed output path re-reads the preseg CSV
+        self.outputEdit, outputRow = self._fileRow(filter_="JSON files (*.json)", save=True, default_name="config.json",
+                                                   on_change=lambda _path: self._reparsePreseg())
+        self.outputEdit.editingFinished.connect(self._reparsePreseg)
         form = qt.QFormLayout()
         form.addRow("Output config.json:", outputRow)
         outer.addLayout(form)
@@ -260,10 +263,10 @@ class ConfigEditorDialog(qt.QDialog, GeneralTabMixin, BatchExportTabMixin, Image
         except Exception as e:
             qt.QMessageBox.critical(self, "Config Editor", f"Failed to load: {e}")
             return
-        self._populateForm(cfg)
-        self._current_path = path
-        remember_config_path(path)
+        self._current_path = path        # BEFORE populating: relative CSV paths are resolved against the config file's folder
         self.outputEdit.text = path
+        self._populateForm(cfg)
+        remember_config_path(path)
         self._dirty = False
         self._updateTitle()
 

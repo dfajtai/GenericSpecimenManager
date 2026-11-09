@@ -52,14 +52,15 @@ class SegmentationTabMixin:
         form.addRow("Opacity:", self.segOpacityEdit)
         layout.addLayout(form)
 
-        self.segTable = qt.QTableWidget(0, 5)
-        seg_headers = ["Name", "Source", "CSV column", "Path pattern", "Color"]
+        self.segTable = qt.QTableWidget(0, 6)
+        seg_headers = ["Name", "Source", "CSV column", "Path pattern", "Color", "Visible"]
         seg_tips = [
             "Segment name as it appears in the segmentation.",
             "'file': try csv_column / path pattern, falling back to empty if unresolved. 'empty': never try a file - always a manual placeholder.",
             "preseg.csv column holding this segment's label image path (Source=file).",
             "Overrides the segmentation-level default path pattern for just this segment.",
             "Click 'Set color for selected...' below to pick.",
+            "Unticked: the segment is hidden (slice and 3D views) when the segmentation is first built (no saved one yet); it can be switched on in the Segment Editor.",
         ]
         self.segTable.setHorizontalHeaderLabels(seg_headers)
         for col, tip in enumerate(seg_tips):
@@ -72,6 +73,7 @@ class SegmentationTabMixin:
         seg_header.setSectionResizeMode(2, qt.QHeaderView.Stretch)             # CSV column
         seg_header.setSectionResizeMode(3, qt.QHeaderView.Stretch)             # Path pattern - the longest text
         seg_header.setSectionResizeMode(4, qt.QHeaderView.ResizeToContents)    # Color - a short r,g,b swatch
+        seg_header.setSectionResizeMode(5, qt.QHeaderView.ResizeToContents)    # Visible - a checkbox
         layout.addWidget(self.segTable)
 
         btnRow = qt.QHBoxLayout()
@@ -102,7 +104,7 @@ class SegmentationTabMixin:
         return w
 
     def _addSegmentRow(self, d):
-        """Append one row to the segments table (name/source/csv_column/path_pattern) with its color swatch cell."""
+        """Append one row to the segments table (name/source/csv_column/path_pattern) with its color swatch cell and Visible checkbox."""
         row = self.segTable.rowCount
         self.segTable.insertRow(row)
         self.segTable.setItem(row, 0, qt.QTableWidgetItem(d.get("name", f"segment_{row + 1}")))
@@ -119,6 +121,10 @@ class SegmentationTabMixin:
         color = d.get("color")
         self._segment_colors.insert(row, list(color) if color else list(DEFAULT_SEGMENT_COLOR))
         self._applySegmentColorDisplay(row)
+        visibleItem = qt.QTableWidgetItem()
+        visibleItem.setFlags(qt.Qt.ItemIsUserCheckable | qt.Qt.ItemIsEnabled | qt.Qt.ItemIsSelectable)
+        visibleItem.setCheckState(qt.Qt.Unchecked if d.get("visible") is False else qt.Qt.Checked)
+        self.segTable.setItem(row, 5, visibleItem)
         self._markDirty()
 
     def _applySegmentColorDisplay(self, row):
@@ -173,7 +179,7 @@ class SegmentationTabMixin:
             self._markDirty()
 
     def _segmentRowDict(self, row):
-        """One segment row as a dict (name/source/csv_column/path_pattern/color), unnamed rows included."""
+        """One segment row as a dict (name/source/csv_column/path_pattern/color, and visible: false when hidden), unnamed rows included."""
         d = {"name": self.segTable.item(row, 0).text().strip(), "source": self.segTable.cellWidget(row, 1).currentText}
         csv_col = self.segTable.item(row, 2).text().strip()
         if csv_col:
@@ -183,6 +189,8 @@ class SegmentationTabMixin:
             d["path_pattern"] = pattern
         if row < len(self._segment_colors):
             d["color"] = [round(c, 3) for c in self._segment_colors[row]]
+        if self.segTable.item(row, 5).checkState() != qt.Qt.Checked:
+            d["visible"] = False   # shown is the default, so only "hidden" is written
         return d
 
     def _readSegmentRows(self):

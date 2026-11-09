@@ -161,6 +161,7 @@ class SegmentConfig:
     path_pattern: Optional[str] = None
     source: Optional[str] = None             # "file" (default) | "empty"
     color: Optional[List[float]] = None
+    visible: Optional[bool] = None           # None = leave Slicer's setting (shown) | False = hidden when the specimen opens | True = shown
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):
@@ -505,25 +506,41 @@ class BrushConfig:
 
 
 @dataclass
+class IntensityRange:
+    """One Editable intensity range of the Segment Editor (segment_editor.editable_intensity_range[effect]). An end left out is taken from the source volume's own range when it is applied."""
+    min: Optional[float] = None
+    max: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]):
+        """Build an IntensityRange from a raw dict, or None if it has neither end."""
+        inst = _from_dict(cls, d) if d else None
+        return inst if inst is not None and (inst.min is not None or inst.max is not None) else None
+
+
+@dataclass
 class SegmentEditorConfig:
     """cfg.segment_editor - Segment Editor defaults (overwrite mode, editable area, brush, which effect to pre-select, and a raw attribute escape hatch) applied once at Study Init and again per-specimen once a real segmentation exists."""
     overwrite_mode: Optional[str] = None     # None = leave Slicer's setting alone | "none" (= allow overlap) | "all_segments" | "visible_segments"
     editable_area: Optional[str] = None      # None = leave Slicer's setting alone (it is "everywhere") | "everywhere" | "inside_all_segments" | "inside_visible_segments" | "outside_all_segments" | "outside_visible_segments"
     brush: Optional[BrushConfig] = None
     active_effect: Optional[str] = None
+    editable_intensity_range: Dict[str, IntensityRange] = field(default_factory=dict)   # effect name ("Paint" / "Erase") -> range, switched on when that effect becomes active
     attributes: Dict[str, Any] = field(default_factory=dict)
 
     def is_configured(self) -> bool:
         """True if any field here was actually set in the config - used to decide whether to touch the Segment Editor at all (an all-default/empty block means 'leave Slicer's own defaults alone')."""
-        return bool(self.overwrite_mode or self.editable_area or self.brush or self.active_effect or self.attributes)
+        return bool(self.overwrite_mode or self.editable_area or self.brush or self.active_effect or self.editable_intensity_range or self.attributes)
 
     @classmethod
     def from_dict(cls, d: Optional[dict]):
-        """Build SegmentEditorConfig from the config's 'segment_editor' block, parsing its nested 'brush' sub-dict first."""
+        """Build SegmentEditorConfig from the config's 'segment_editor' block, parsing its nested 'brush' and 'editable_intensity_range' sub-dicts first."""
         d = dict(d or {})
         brush = BrushConfig.from_dict(d.pop("brush", None))
+        ranges = {effect: r for effect, r in ((e, IntensityRange.from_dict(v)) for e, v in (d.pop("editable_intensity_range", None) or {}).items()) if r is not None}
         inst = _from_dict(cls, d)
         inst.brush = brush
+        inst.editable_intensity_range = ranges
         return inst
 
 
@@ -614,7 +631,8 @@ class StudyConfig:
 
 
 def _study_dir(value, base_dir):
-    """The study folder: the config's own folder when not set, a relative `study_dir` (e.g. ".") resolved against the config's folder - not against the current directory of whatever process runs Slicer - and an absolute one as it is. "/" or "\\" separators are converted to the platform's."""
+    """The study folder, always ABSOLUTE: the config's own folder when not set, a relative `study_dir` (e.g. ".") resolved against the config's folder - not against the current directory of whatever process runs Slicer - and an absolute one as it is. "/" or "\\" separators are converted to the platform's. Absolute matters: the CSV and image paths are joined onto it later, and a relative study folder (config opened as `etc/config.json`) used to give `etc/etc/database.csv`."""
+    base_dir = os.path.abspath(base_dir or ".")
     if not value:
         return base_dir
     value = platform_path(value)

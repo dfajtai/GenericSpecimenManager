@@ -320,6 +320,24 @@ class GenericSpecimen:
 
         self.segmentation_node = seg_node
         self.writeable["__segmentation__"] = out_path
+        if not os.path.exists(out_path):
+            self._apply_segment_visibility(seg_cfg)   # only a segmentation built from scratch; an existing one keeps what the user left
+
+    def _apply_segment_visibility(self, seg_cfg: SegmentationConfig):
+        """Show/hide the segments that have `visible` set (segment entry or defaults.segment), matched by segment NAME. Called only for a segmentation built from scratch (nothing saved yet) - a saved one is loaded as it is. Segments without the key are left as Slicer has them. Only the display changes; the segmentation data does not."""
+        display = self.segmentation_node.GetDisplayNode()
+        segmentation = self.segmentation_node.GetSegmentation()
+        if display is None:
+            return
+        for seg_def in seg_cfg.segments:
+            resolved = self._resolve_segment_cfg(seg_def)
+            if resolved.visible is None or not resolved.name:
+                continue
+            segment_id = segmentation.GetSegmentIdBySegmentName(resolved.name)
+            if segment_id:
+                display.SetSegmentVisibility(segment_id, bool(resolved.visible))
+            else:
+                logger.warning(f"[GenericSpecimen] {self.label}: segment '{resolved.name}' is not in the segmentation, its visibility was not set")
 
     def _load_markups(self, markups_cfg: MarkupsConfig):
         """Load this specimen's markups file; if it doesn't exist yet, fall back to markups.template_path (if set, renamed to this specimen) or an empty new fiducial list."""

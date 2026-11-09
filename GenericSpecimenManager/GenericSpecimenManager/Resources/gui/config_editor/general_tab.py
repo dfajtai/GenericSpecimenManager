@@ -9,6 +9,7 @@ import os
 import qt
 
 from Resources.core.config_model import normalize_output_dir_pattern
+from Resources.core.paths import platform_path
 from Resources.gui.config_editor.helpers import csv_list, guess_key_columns, read_csv_header
 from Resources.gui.config_editor.popups import TextPopup
 
@@ -28,26 +29,27 @@ class GeneralTabMixin:
             return qt.QFormLayout(group)
 
         form = new_group("Study files")
-        self.studyDirEdit, studyDirRow = self._fileRow(directory=True)
-        self.studyDirEdit.setPlaceholderText("default: preseg CSV's folder")
+        self.studyDirEdit, studyDirRow = self._fileRow(directory=True, on_change=lambda _path: self._reparsePreseg())
+        self.studyDirEdit.editingFinished.connect(self._reparsePreseg)   # a typed/changed Study dir moves where a relative preseg path points
+        self.studyDirEdit.setPlaceholderText("default: the config file's folder")
         self.studyDirEdit.setToolTip(
             "Base folder every relative path in the config resolves against. Optional, but set this "
             "FIRST if you're going to set it at all - the two CSV pickers below show their path "
             "relative to whatever Study dir already contains at the moment you browse, so setting it "
-            "afterward won't retroactively shorten paths you already picked. Leave empty to default "
-            "to the preseg CSV's own folder.")
+            "afterward won't retroactively shorten paths you already picked. A relative Study dir is "
+            "relative to the config file's folder. Leave empty to use the config file's folder.")
         form.addRow("Study dir (optional, set first):", studyDirRow)
 
         self.presegEdit, presegRow = self._fileRow(
             on_change=self._onPresegChanged,
-            relative_to=lambda: self.studyDirEdit.text.strip())
-        self.presegEdit.setToolTip("Shown relative to Study dir above if that's set - hover for the full path.")
+            relative_to=lambda: self._studyRoot())
+        self.presegEdit.setToolTip("Shown relative to the study folder (Study dir above; empty = the config file's folder) - hover for the full path.")
         self.presegEdit.editingFinished.connect(
             lambda: self._onPresegChanged(self._resolveCsvPath(self.presegEdit.text)))
         form.addRow("Images / preseg CSV:", presegRow)
         self.dbEdit, dbRow = self._fileRow(
-            relative_to=lambda: self.studyDirEdit.text.strip() or os.path.dirname(self._preseg_abs_path or ""))
-        self.dbEdit.setToolTip("Shown relative to Study dir above (or to the preseg CSV's folder if Study dir is empty) - hover for the full path.")
+            relative_to=lambda: self._studyRoot())
+        self.dbEdit.setToolTip("Shown relative to the study folder (Study dir above; empty = the config file's folder) - hover for the full path.")
         form.addRow("Database CSV:", dbRow)
         self.chkAutoSaveDb = qt.QCheckBox("Auto-save database")
         self.chkAutoSaveDb.setToolTip("Writes database.csv to disk after every table edit; the main module then hides its Save database CSV button.")
@@ -191,11 +193,27 @@ class GeneralTabMixin:
         filesystem path for reading - works whether the value got there via
         Browse (already handled in _fileRow) or manual typing/pasting,
         which never went through that relative-path logic."""
-        text = (text or "").strip()
+        text = platform_path((text or "").strip())
         if not text or os.path.isabs(text):
             return text
-        study_dir = self.studyDirEdit.text.strip()
-        return os.path.join(study_dir, text) if study_dir else text
+        root = self._studyRoot()
+        return os.path.join(root, text) if root else text
+
+    def _configFolder(self):
+        """Absolute folder of the config file being edited (the Output config.json field, else the file it was loaded from), or '' for a new config that has no location yet - what the module resolves a relative study dir against."""
+        path = (self.outputEdit.text.strip() if hasattr(self, "outputEdit") else "") or self._current_path or ""
+        return os.path.dirname(os.path.abspath(path)) if path else ""
+
+    def _studyRoot(self):
+        """Absolute study folder as the module will see it: Study dir if set (relative = under the config file's folder), else the preseg CSV's folder when that is an absolute path (what saving writes as study_dir), else the config file's folder. '' if nothing is known yet."""
+        config_dir = self._configFolder()
+        text = platform_path(self.studyDirEdit.text.strip())
+        if text:
+            return text if os.path.isabs(text) else os.path.normpath(os.path.join(config_dir or os.getcwd(), text))
+        preseg = platform_path(self.presegEdit.text.strip())
+        if preseg and os.path.isabs(preseg):
+            return os.path.dirname(preseg)
+        return config_dir
 
     def _onShowCsvColumns(self):
         """Read both CSVs' headers (resolving study-dir-relative paths first) and show them side by side - plus the columns common to both, which are the most likely Key Columns candidates."""
@@ -230,10 +248,18 @@ class GeneralTabMixin:
         if not self.keyColumnsEdit.text.strip() and common:
             self.keyColumnsEdit.text = ",".join(guess_key_columns(common) or common[:1])
 
+    def _reparsePreseg(self):
+        """Read the preseg CSV again from the fields as they are now (relative path + Study dir + config location) - called whenever something that decides where a relative path points has changed."""
+        text = self.presegEdit.text.strip()
+        if text:
+            self._onPresegChanged(self._resolveCsvPath(text))
+
     def _onPresegChanged(self, path):
-        """Refresh everything that depends on the preseg CSV's header: the quick-add column table (Images tab, key columns excluded) and, if Key Columns is still empty, a best-effort guess."""
+        """Refresh everything that depends on the preseg CSV's header: the quick-add column table (Images tab, key columns excluded) and, if Key Columns is still empty, a best-effort guess. A file that cannot be read is named in the field's tooltip."""
         self._preseg_abs_path = path
         header = read_csv_header(path)
+        if path:
+            self.presegEdit.setToolTip(f"Could not read: {path}" if not header else f"Full path: {path}")
         if hasattr(self, "quickColumnsTable"):
             self.quickColumnsTable.setRowCount(0)
             key_cols = set(csv_list(self.keyColumnsEdit.text))
@@ -268,7 +294,7 @@ class GeneralTabMixin:
         self.keyColumnsEdit.text = ",".join(cfg.get("key_columns", []))
         preseg_val = self.presegEdit.text.strip()
         if preseg_val:
-            self._preseg_abs_path = preseg_val if os.path.isabs(preseg_val) else os.path.join(self.studyDirEdit.text.strip() or ".", preseg_val)
+            self._preseg_abs_path = self._resolveCsvPath(preseg_val)
             # Setting .text programmatically does NOT fire editingFinished/the
             # Browse-picked callback - without this explicit call, the
             # quick-add column list (and key-column guessing) never runs when
@@ -293,8 +319,13 @@ class GeneralTabMixin:
 
     def _collectGeneral(self, cfg):
         """Write the General tab's part of the config into the dict `cfg` (key order = file order)."""
+        preseg_text = self.presegEdit.text.strip()
+        # study_dir: what was typed; else the preseg CSV's folder when that path is absolute; else not written at all - the module then
+        # uses the config file's folder (a relative preseg path used to give study_dir "etc" and, with "etc/img_paths.csv", etc/etc/...)
+        study_dir = self.studyDirEdit.text.strip() or (os.path.dirname(preseg_text) if os.path.isabs(preseg_text) else "")
+        if study_dir:
+            cfg["study_dir"] = study_dir
         cfg.update({
-            "study_dir": self.studyDirEdit.text.strip() or os.path.dirname(self.presegEdit.text.strip()) or ".",
             "database_csv_path": self.dbEdit.text.strip(),
             "preseg_csv_path": self.presegEdit.text.strip(),
             "key_columns": csv_list(self.keyColumnsEdit.text) or ["ID"],

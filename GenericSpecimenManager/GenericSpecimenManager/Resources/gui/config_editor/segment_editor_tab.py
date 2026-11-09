@@ -1,14 +1,14 @@
 """
 segment_editor_tab.py
 =====================
-Segment editor tab: overwrite mode, brush, active effect, raw attributes.
+Segment editor tab: masking, editable intensity range per brush effect, brush, active effect, raw attributes.
 """
 
 import json
 
 import qt
 
-from Resources.definitions import BRUSH_SHAPE_LABELS, OVERWRITE_LABELS, SEGMENT_EDITOR_EFFECT_CHOICES
+from Resources.definitions import BRUSH_SHAPE_LABELS, INTENSITY_RANGE_EFFECTS, OVERWRITE_LABELS, SEGMENT_EDITOR_EFFECT_CHOICES
 from Resources.utils.segment_editor import editable_area_choices
 from Resources.gui.config_editor.helpers import (
     combo_value, fill_labeled_combo, labeled_combo_value, set_combo_value, set_labeled_combo, to_float)
@@ -41,6 +41,28 @@ class SegmentEditorTabMixin:
             "takes the voxels from the other (all / only the visible) segments.")
         maskingForm.addRow("Modify other segments:", self.overwriteModeCombo)
         layout.addWidget(maskingGroup)
+
+        rangeGroup = qt.QGroupBox("Editable intensity range")
+        rangeForm = qt.QFormLayout(rangeGroup)
+        rangeGroup.setToolTip(
+            "<html>The Segment Editor's <b>Editable intensity range</b> (only voxels of the source volume inside the range can be changed), "
+            "set automatically when the effect becomes active.<br>Leave both empty = this effect does not touch the range. "
+            "An end left empty is taken from the source volume's own range.<br>Slicer has ONE range for all effects, "
+            "so it is rewritten whenever you switch between the effects below; other effects keep the last one.</html>")
+        self.intensityRangeEdits = {}
+        for effect in INTENSITY_RANGE_EFFECTS:
+            minEdit, maxEdit = qt.QLineEdit(), qt.QLineEdit()
+            for edit in (minEdit, maxEdit):
+                edit.setMaximumWidth(110)   # a number, not a sentence
+            row = qt.QHBoxLayout()
+            row.addWidget(qt.QLabel("Min:"))
+            row.addWidget(minEdit)
+            row.addWidget(qt.QLabel("Max:"))
+            row.addWidget(maxEdit)
+            row.addStretch(1)
+            rangeForm.addRow(f"{effect}:", row)
+            self.intensityRangeEdits[effect] = (minEdit, maxEdit)
+        layout.addWidget(rangeGroup)
 
         brushGroup = qt.QGroupBox("Brush")
         brushForm = qt.QFormLayout(brushGroup)
@@ -90,6 +112,11 @@ class SegmentEditorTabMixin:
         self.brushDiameterEdit.text = "" if brush.get("diameter_mm") is None else str(brush["diameter_mm"])
         self.chkBrushAbsolute.checked = not bool(brush.get("relative"))
         set_combo_value(self.activeEffectEdit, se.get("active_effect", "") or "")
+        ranges = se.get("editable_intensity_range") or {}
+        for effect, (minEdit, maxEdit) in self.intensityRangeEdits.items():
+            r = ranges.get(effect) or {}
+            minEdit.text = "" if r.get("min") is None else str(r["min"])
+            maxEdit.text = "" if r.get("max") is None else str(r["max"])
         if se.get("attributes"):
             self.seAttributesEdit.plainText = json.dumps(se["attributes"], indent=2)
 
@@ -102,7 +129,12 @@ class SegmentEditorTabMixin:
         diameter = to_float(self.brushDiameterEdit.text)
         active_effect = combo_value(self.activeEffectEdit)
         se_attrs = self._parseJsonField(self.seAttributesEdit, "segment_editor attributes") or {}
-        if overwrite or editable_area or brush_shape or diameter is not None or active_effect or se_attrs:
+        intensity = {}
+        for effect, (minEdit, maxEdit) in self.intensityRangeEdits.items():
+            r = {k: v for k, v in (("min", to_float(minEdit.text)), ("max", to_float(maxEdit.text))) if v is not None}
+            if r:
+                intensity[effect] = r
+        if overwrite or editable_area or brush_shape or diameter is not None or active_effect or intensity or se_attrs:
             se = {}
             if overwrite:
                 se["overwrite_mode"] = overwrite
@@ -118,6 +150,8 @@ class SegmentEditorTabMixin:
                 se["brush"] = brush
             if active_effect:
                 se["active_effect"] = active_effect
+            if intensity:
+                se["editable_intensity_range"] = intensity
             if se_attrs:
                 se["attributes"] = se_attrs
             cfg["segment_editor"] = se
@@ -128,6 +162,9 @@ class SegmentEditorTabMixin:
         self.brushDiameterEdit.text = ""
         set_combo_value(self.activeEffectEdit, "")
         self.chkBrushAbsolute.checked = True
+        for minEdit, maxEdit in self.intensityRangeEdits.values():
+            minEdit.text = ""
+            maxEdit.text = ""
         set_labeled_combo(self.overwriteModeCombo, OVERWRITE_LABELS, "")
         set_labeled_combo(self.editableAreaCombo, self._editableAreaLabels, "")
         set_labeled_combo(self.brushShapeCombo, BRUSH_SHAPE_LABELS, "")

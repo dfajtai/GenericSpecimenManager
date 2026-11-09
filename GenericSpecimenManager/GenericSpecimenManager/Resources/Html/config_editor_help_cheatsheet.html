@@ -107,6 +107,7 @@
 <li><b>Reference image</b> - a dropdown of the Images-tab <code>name</code>s (it follows the table); the pick is used as the geometry reference for the whole segmentation.</li>
 <li><b>Path pattern</b> - fallback naming for segment rows with no CSV column/path of their own, e.g. <code>{ID}/{measurement}/{ID}-{segment_name}.nii.gz</code>.</li>
 <li><b>Opacity</b> - display opacity of the whole segmentation (slice and 3D views), 0-1; empty = 1 (opaque). Multiplies with the fixed per-segment 2D fill opacity.</li>
+<li><b>Visible</b> - untick to hide a segment (slice and 3D views) when the segmentation is first built (a specimen without a saved segmentation yet), e.g. a helper segment; switch it on in the Segment Editor when needed. A saved segmentation is loaded as it is. Only the display changes. Ticked = Slicer's default, nothing is written to the config.</li>
 <li><b>Source = file</b> - tries CSV column / path pattern, falls back to an empty placeholder if nothing resolves. <b>Source = empty</b> - never tries a file, always a manual placeholder.</li>
 </ul>
 
@@ -143,6 +144,7 @@
   <li>an already-<b>live</b> Segment Editor node, if one already exists (you opened the module earlier).</li>
   </ul>
 </li>
+<li><b>Editable intensity range</b> - a range per brush effect (Paint, Erase): when that effect becomes active, the Segment Editor's <i>Editable intensity range</i> is switched on with these values (only voxels of the source volume inside the range can be changed), e.g. Paint <code>-50..100</code>, Erase <code>-1024..-60</code>. An end left empty = the source volume's own end; both empty = that effect does not touch the range. Slicer has one range for all effects, so it is rewritten whenever you switch between them.</li>
 <li><b>Active effect on load</b> - which effect (e.g. <code>Paint</code>) should already be selected. Left empty, the user just picks an effect manually - the brush size/shape above still applies whenever they pick Paint.</li>
 </ul>
 <p><b>Raw attributes - what it's for and how to use it.</b> Slicer stores each effect's settings as plain key/value
