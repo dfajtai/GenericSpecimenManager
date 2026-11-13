@@ -27,6 +27,29 @@ saved and exported the same way, every time, so you can concentrate on the segme
   *reset* for a specimen that has to start over, optional on-screen specimen annotation, and built-in cheat
   sheets with search.
 
+## Implemented scenarios
+
+Everything below is set per study in the config (or through the Config Editor), so each project gets its own setup.
+
+- **Project-level setup** - one config per study with `defaults` and named `presets` that layer onto each image or
+  segment; any file layout, from one folder per specimen to a flat dump, through `{column}` patterns.
+- **Workspace customisation** - crosshair, slice-view ruler, orientation markers (3D and/or slice views),
+  radiological or neurological view convention, a fixed in-plane slice rotation, a global window/level, and an
+  on-screen specimen annotation.
+- **Image display** - per-image window/level, colour table (including `gnuplot2` / `inferno`), display threshold,
+  opacity and volume rendering, several background and foreground images per specimen.
+- **Segment Editor defaults** - overwrite mode, editable area, brush, active effect, editable intensity range per
+  effect, a Threshold range per image, and which volume follows into the slice views' foreground.
+- **Segmentation** - segments created empty, or pre-filled from existing label maps (automatic segmentations);
+  per-segment colour and initial visibility; segmentation opacity.
+- **Markups** - point lists from a template or a file, with size, glyph and colour set in the config.
+- **Review workflows** - four statuses per specimen, filter by status, group by a column, checkbox and dropdown
+  columns for your own metadata, optional auto-save of `database.csv`.
+- **Batch export** - per-segment label maps, segment statistics (several metrics, several reference images) and a
+  markup summary, for finished specimens only.
+
+Ready-made configs for several of these are in [`examples/config/`](examples/config).
+
 ## How it fits together
 
 | # | step | what happens | status |
