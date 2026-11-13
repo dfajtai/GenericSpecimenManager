@@ -1,18 +1,18 @@
 # GenericSpecimenManager
 
-**Repetitive segmentation and annotation work on pre-processed images - done in 3D Slicer, without the usual
-Slicer chores, and ending in data that is safe to analyse automatically.**
+**Repetitive segmentation and annotation of pre-processed images in 3D Slicer, with file naming, progress tracking
+and export handled for you - ending in data that is safe to analyse automatically.**
 
-People make mistakes; code doesn't. GenericSpecimenManager takes the error-prone parts of a manual
-image-annotation study out of human hands: which files belong to which specimen, what a segment or a file is
-called, where results are saved, which specimen is finished. You describe the study once in a JSON config; from then
-on every specimen is loaded, saved and exported the same way, every time.
+GenericSpecimenManager builds on Slicer's Segment Editor and takes the bookkeeping of a manual image-annotation study
+off your hands: which files belong to which specimen, what a segment or a file is called, where results are saved,
+which specimen is finished. You describe the study once in a JSON config; from then on every specimen is loaded,
+saved and exported the same way, every time, so you can concentrate on the segmentation itself.
 
 ## What it does
 
 - **One config describes a whole study** - images, segments, markups, workspace, batch export. No per-species
   module to write. A guided **Config Editor** builds the JSON for you.
-- **No file-name or segment-name accidents** - paths and names are generated from your CSV columns by patterns
+- **Consistent file and segment names** - paths and names are generated from your CSV columns by patterns
   such as `{ID}/{measurement}/{name}.nii.gz`. Nobody types or picks a path by hand.
 - **Start from an automatic segmentation** - a segment can be initialised from an existing label map (for example the
   output of an automatic or model-based segmentation, found through a CSV column or a path pattern) instead of an
