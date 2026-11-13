@@ -55,8 +55,8 @@ Details: [The main module](../docs/main-module.md).
 
 ## 5. Export
 
-When some specimens are *finished*, and batch export is enabled in the config, press **Batch export** (under
-*Initialize Study*). It writes, in one pass and only for finished specimens, whatever you enabled: per-segment label
+When some specimens are *finished*, and batch export is enabled in the config, press **Batch export** (inside the
+*Advanced Study Settings* block). It writes, in one pass and only for finished specimens, whatever you enabled: per-segment label
 maps, a segment-statistics CSV and a markup summary CSV.
 Details: [Batch export](../docs/batch-export.md).
 

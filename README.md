@@ -64,7 +64,7 @@ Ready-made configs for several of these are in [`examples/config/`](examples/con
 | folder | what is in it |
 |---|---|
 | [`GenericSpecimenManager/`](GenericSpecimenManager) | the Slicer extension - start with its [README](GenericSpecimenManager/README.md) |
-| [`docs/`](docs) | reference documentation: config schema, Config Editor, batch export, architecture, Segment Editor notes |
+| [`docs/`](docs) | user reference: config schema, Config Editor, main module, batch export, data safety; [`docs/dev/`](docs/dev) holds the developer docs |
 | [`howto/`](howto) | step-by-step guides, e.g. [your first study](howto/first-study.md) |
 | [`examples/config/`](examples/config) | ready-made study configs to start from |
 
@@ -97,10 +97,10 @@ Full walk-through: [Your first study](howto/first-study.md).
 
 | I want to... | read |
 |---|---|
-| find my way around the code, run the tests | [Architecture](docs/architecture.md) |
+| find my way around the code, run the tests | [Architecture](docs/dev/architecture.md) |
 | know how the study's files are protected | [Data safety](docs/data-safety.md) |
-| see why the Segment Editor integration looks the way it does | [Segment Editor design notes](docs/segment-editor-design-notes.md) |
-| see how the volume rendering shift works | [Volume rendering notes](docs/volume-rendering.md) |
+| see why the Segment Editor integration looks the way it does | [Segment Editor design notes](docs/dev/segment-editor-design-notes.md) |
+| see how the volume rendering shift works | [Volume rendering notes](docs/dev/volume-rendering.md) |
 | see what is planned, or what changed | [Roadmap](docs/roadmap.md), [Changelog](CHANGELOG.md) |
 
 ## License

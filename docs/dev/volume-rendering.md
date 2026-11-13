@@ -4,7 +4,7 @@
 images can be `enabled` at once, each with its own preset and an optional
 min/max (or window/level) shift.
 
-For the shift, **I searched before coding** - my first attempt would have
+The shift was researched before it was coded - a first attempt would have
 used a nonexistent `vtkPiecewiseFunction.AdjustRange()` /
 `vtkColorTransferFunction.AdjustRange()` method (a plausible-sounding but
 invented API). A real, community-verified Slicer script (the

@@ -12,7 +12,7 @@ go, which specimen is done) out of human hands, and never put the data at risk. 
 columns via patterns, validate up front, write files safely, keep the UI surface small (the maintainer keeps pruning
 options nobody would use). The two CSVs and the exported files are the contract between the pieces - treat their
 format as an interface (see `docs/roadmap.md` for the planned pre-processing/analysis steps).
-Human docs: `README.md`, `docs/` (reference), `howto/` (guides). Full code map: `docs/architecture.md`.
+Human docs: `README.md`, `docs/` (user reference), `docs/dev/` (developer docs), `howto/` (guides). Full code map: `docs/dev/architecture.md`.
 The maintainer talks to you in Hungarian - answer in the user's language, keep code, docs and commits in English.
 
 ## Where things are
@@ -39,7 +39,8 @@ Layer rule (enforced by a test): core <- utils <- study <- gui. Never import upw
 - `gui/` methods are camelCase (Slicer style, e.g. `_populateGeneral`); `core/`, `utils/`, `study/` are snake_case.
 - Every function/method has a docstring; explain WHY for Slicer/VTK quirks. Don't guess Slicer APIs - flag uncertainty.
 - Unknown config keys are ignored silently; no backward-compatibility shims (the schema may change).
-- Keep docs in step with the code: `docs/`, the cheat sheets and `CHANGELOG.md`.
+- Keep docs in step with the code: `docs/`, the cheat sheets and `CHANGELOG.md`. User docs (`docs/`, `howto/`) say what to do and
+  what you get; how it works inside goes to `docs/dev/`.
 
 ## Check your work (no Slicer needed)
     python -m unittest discover -s tests          # imports (Slicer stubbed), layers, packaging, safe_io, utils
