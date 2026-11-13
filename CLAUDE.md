@@ -40,7 +40,10 @@ Layer rule (enforced by a test): core <- utils <- study <- gui. Never import upw
 - Every function/method has a docstring; explain WHY for Slicer/VTK quirks. Don't guess Slicer APIs - flag uncertainty.
 - Unknown config keys are ignored silently; no backward-compatibility shims (the schema may change).
 - Keep docs in step with the code: `docs/`, the cheat sheets and `CHANGELOG.md`. User docs (`docs/`, `howto/`) say what to do and
-  what you get; how it works inside goes to `docs/dev/`.
+  what you get; how it works inside goes to `docs/dev/`. `CHANGELOG.md` is one line per change.
+  The details go to the daily log in `changelog/` (one file per day named by its date, like 2026-11-09.md; new work goes in today's file; per change a
+  `## [x] Title` heading with status - done / verified in Slicer or not - what changed, the reasoning, and open questions).
+  Older detailed entries: `changelog/archive-2026-09-to-11-09.md`.
 
 ## Check your work (no Slicer needed)
     python -m unittest discover -s tests          # imports (Slicer stubbed), layers, packaging, safe_io, utils
