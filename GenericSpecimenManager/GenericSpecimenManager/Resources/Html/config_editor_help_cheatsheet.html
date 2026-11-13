@@ -20,16 +20,18 @@
   table.ref { border-collapse: collapse; margin: 4px 0 10px 0; width: 100%; }
   table.ref th, table.ref td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
   table.ref th { background-color: #2c5f8a; color: white; }
+  table.ref td.grp { background-color: #dde6ef; font-weight: bold; }
   table.ref tr:nth-child(even) td { background-color: #f4f6f8; }
 </style>
 
 <a name="workflow"></a>
 <h2>&#128221; Workflow</h2>
-<ul>
-<li><b>New</b> / <b>Load from file...</b> - both ask Save/Discard/Cancel first if the current form has unsaved changes (the title bar shows a trailing <code>*</code> while dirty).</li>
-<li>Opening this dialog from the main module pre-loads whatever config is currently active there - you're usually editing the SAME config the module already has open, not starting fresh.</li>
-<li><b>Save config</b> always builds from the tabs (via the same logic as <b>Manual edit config &rarr; Refresh</b>) - it never silently saves stray text you typed somewhere without going through a field.</li>
-</ul>
+<ol>
+<li><b>Open a config</b> - opening this dialog from the main module pre-loads the config that is active there (you are usually editing the SAME config the module has open). Otherwise use <b>New</b> or <b>Load from file...</b>; both ask Save/Discard/Cancel first if the form has unsaved changes (the title bar shows a trailing <code>*</code> while dirty). <b>Reload from disk</b> re-reads the open file, e.g. after editing it elsewhere.</li>
+<li><b>Fill in the tabs</b>, roughly top to bottom: <b>General</b> (CSVs, key columns), <b>Images</b>, <b>Segmentation</b>, then <b>Markups</b>, <b>Workspace</b>, <b>Segment editor</b>, <b>Volume rendering</b> and <b>Batch export</b> as the study needs them. <b>Defaults / Presets</b> holds settings shared by many images.</li>
+<li><b>Save config</b> (or <b>Ctrl+S</b> while this window is active, quietly) - the config is always built from the tabs (the same logic as <b>Manual edit config &rarr; Refresh</b>), so stray text that is not in a field is never saved. The write is atomic and the previous version is kept as <code>config.json.prev</code>. When the dialog was opened from the main module, it then offers to load the saved config into the module.</li>
+<li><b>Manual edit config</b> is a view of the form: hand edits there only count after <b>Apply to form</b>.</li>
+</ol>
 
 <a name="general"></a>
 <h2>&#128736; General</h2>
@@ -138,12 +140,7 @@
 <li><b>Modify other segments</b> (<code>overwrite_mode</code>, in the <b>Masking</b> group) - <i>Allow overlap</i> (<code>none</code>) is the Segment Editor's "Allow overlap" checkbox; <i>Overwrite all / visible segments</i> (<code>all_segments</code>/<code>visible_segments</code>) restrict painting so it doesn't eat into other segments. <code>(unset)</code> leaves Slicer's own setting alone.</li>
 <li><b>Editable area</b> - where painting is allowed, like the Segment Editor's dropdown of the same name: <code>everywhere</code>, or only <code>inside</code> / <code>outside</code> <code>all_segments</code> / <code>visible_segments</code>. <code>(unset)</code> leaves Slicer's own setting (everywhere).</li>
 <li><b>Use absolute size (mm)</b> checked + shape <code>sphere</code> - fixed-size 3D brush in millimeters, regardless of zoom (e.g. always exactly 5&nbsp;mm). Unchecked - size as a % of the slice view instead (grows/shrinks as you zoom).</li>
-<li>Applied <b>once</b>, at Study Init - not re-applied per specimen. It's set on two places so it works whether or not Segment Editor was already opened this session:
-  <ul>
-  <li>the <b>default/template</b> node - used when Segment Editor is opened for the <i>first</i> time this session;</li>
-  <li>an already-<b>live</b> Segment Editor node, if one already exists (you opened the module earlier).</li>
-  </ul>
-</li>
+<li>Applied in <b>two steps</b>: at <b>Study Init</b> the defaults are set on the <b>default/template</b> node (used when the Segment Editor is opened for the first time this session) and on an already-<b>live</b> Segment Editor node, if there is one; and <b>every time a specimen is loaded</b> the module hands its segmentation to the Segment Editor, writes the brush settings, activates the <b>Active effect</b> and switches to the Segment Editor.</li>
 <li><b>Show the source volume as the foreground</b> - ticked (default): the source volume picked in the Segment Editor is shown as the foreground layer and the reference image stays the background. Unticked (<code>"source_volume_to_foreground": false</code>): the module does not touch the layers; Slicer's own behaviour applies (the picked source volume goes to the background, the foreground is cleared).</li>
 <li><b>Editable intensity range</b> - a range per brush effect (Paint, Erase): when that effect becomes active, the Segment Editor's <i>Editable intensity range</i> is switched on with these values (only voxels of the source volume inside the range can be changed), e.g. Paint <code>-50..100</code>, Erase <code>-1024..-60</code>. An end left empty = the source volume's own end; both empty = that effect does not touch the range. Slicer has one range for all effects, so it is rewritten whenever you switch between them.</li>
 <li><b>Active effect on load</b> - which effect (e.g. <code>Paint</code>) should already be selected. Left empty, the user just picks an effect manually - the brush size/shape above still applies whenever they pick Paint.</li>
@@ -225,15 +222,84 @@ overlays) to copy from, plus an "Insert ALL" button.</p>
 <p class="note">Every named constant/parameter used above, in one place - what it's called, where you set it, and what it actually does.</p>
 <table class="ref">
 <tr><th>Name</th><th>Where</th><th>Function</th></tr>
+<tr><td colspan="3" class="grp">Study and specimen table (General tab)</td></tr>
 <tr><td><code>study_dir</code></td><td>General &rarr; Study dir</td><td>Root every relative path in the config resolves against. Empty -> the preseg CSV's own folder.</td></tr>
+<tr><td><code>database_csv_path</code></td><td>General &rarr; Database CSV</td><td>Path of <code>database.csv</code> (relative paths resolve against the config file's folder, or <code>study_dir</code>). The module's Advanced Study Settings can override it.</td></tr>
+<tr><td><code>preseg_csv_path</code></td><td>General &rarr; Images / preseg CSV</td><td>Path of <code>preseg.csv</code>: one row per specimen, with the key columns and the image paths. Overridable in the module's Advanced Study Settings.</td></tr>
 <tr><td><code>key_columns</code></td><td>General &rarr; Key columns</td><td>Composite specimen ID (e.g. <code>ID</code> or <code>ID,measurement</code>) - must exist, with matching values, in both <code>database.csv</code> and <code>preseg.csv</code>.</td></tr>
 <tr><td><code>status_column</code></td><td>General &rarr; Status column</td><td><code>database.csv</code> column holding each specimen's status as an integer: <code>0</code> untouched, <code>1</code> in progress, <code>2</code> to review, <code>3</code> finished (created if missing). The column can have any name (e.g. <code>done</code>); the table always shows it as the last column, headed <code>Status</code>, as a dropdown that colors the row (not optional, no need to list it in <code>table_columns</code>). Batch Export processes only <code>3</code>. <code>1</code> is set automatically when a specimen loads from its own saved file or is saved; <code>2</code>/<code>3</code> are set manually (dropdown or the Close dialog).</td></tr>
 <tr><td><code>table_columns</code></td><td>General &rarr; Table columns</td><td>Which <code>database.csv</code> columns are shown/editable in the main module's specimen table.</td></tr>
 <tr><td><code>output_dir_pattern</code> (top-level)</td><td>General &rarr; Output dir pattern</td><td>Per-specimen output folder for <b>interactive</b> work (segmentation/markups/saved images). Independent of Batch export's own root dir/patterns below.</td></tr>
+<tr><td><code>group_by_key.enabled</code></td><td>General &rarr; Filtering &rarr; Group specimens by key</td><td>Show the group-select combo above the specimen table. Viewing convenience only.</td></tr>
 <tr><td><code>group_by_key.column</code></td><td>General &rarr; Group specimens by key</td><td>Database column used to populate the main module's group-select combo. Viewing convenience only - has no effect on Batch export.</td></tr>
 <tr><td><code>status_filter.enabled</code></td><td>General &rarr; Filtering &rarr; Filter by status</td><td>Show the main module's Status filter (a checklist of the four statuses above the table). On by default. Viewing convenience only - Batch export ignores it.</td></tr>
 <tr><td><code>auto_save_database</code></td><td>General &rarr; Auto-save database</td><td>On = <code>database.csv</code> is written to disk after every table edit, and the manual "Save database CSV" button is hidden. Default off.</td></tr>
 <tr><td><code>factor_columns</code></td><td>General &rarr; Factor columns</td><td>Which <code>database.csv</code> columns render as a checkbox (<code>binary</code>) or a level dropdown (<code>multilevel</code>) in the main module's specimen table, instead of free text. Only takes effect for columns also listed in <code>table_columns</code>.</td></tr>
+<tr><td colspan="3" class="grp">Images (Images tab, Defaults / Presets tab)</td></tr>
+<tr><td><code>images[].name</code></td><td>Images &rarr; Name</td><td>The image's name: what <code>{name}</code> inserts into path patterns, and how other settings (reference images, volume rendering) refer to it.</td></tr>
+<tr><td><code>images[].csv_column</code></td><td>Images &rarr; CSV column</td><td>The preseg column holding this image's path for the specimen (relative to <code>study_dir</code> unless absolute). Empty &rarr; the path pattern is used.</td></tr>
+<tr><td><code>images[].path_pattern</code></td><td>Images &rarr; Edit advanced... / Default path pattern</td><td>Fallback path when the CSV column is empty or not set; takes <code>{name}</code> and any column. Set it once as <code>defaults.image.path_pattern</code> (the Default path pattern field above the table).</td></tr>
+<tr><td><code>images[].type</code></td><td>Images &rarr; Type</td><td><code>volume</code> (default) or <code>labelmap</code>.</td></tr>
+<tr><td><code>images[].role</code></td><td>Images &rarr; Role</td><td><code>background</code> / <code>label</code> / <code>foreground</code>: the slice-view layer the image is shown in. <code>(none)</code> = loaded but not shown as a layer.</td></tr>
+<tr><td><code>images[].required</code></td><td>Images &rarr; Required</td><td>On: a missing file makes loading the specimen fail. Off (default): the image is skipped with a warning.</td></tr>
+<tr><td><code>images[].preset</code></td><td>Images &rarr; Preset</td><td>Name of an entry in <code>presets</code>; layered between <code>defaults.image</code> and the row's own fields.</td></tr>
+<tr><td><code>images[].opacity</code></td><td>Images &rarr; Opacity</td><td>Layer opacity (0-1) of a <code>label</code> or <code>foreground</code> image.</td></tr>
+<tr><td><code>images[].color_table</code></td><td>Images &rarr; Color table</td><td>A Slicer colour table name, or the built-in <code>gnuplot2</code> / <code>inferno</code>.</td></tr>
+<tr><td><code>images[].window_level</code></td><td>Images &rarr; Edit advanced...</td><td>Display window/level: <code>{"min":..,"max":..}</code>, <code>{"auto":true}</code> or <code>{"window":..,"level":..}</code>.</td></tr>
+<tr><td><code>images[].threshold</code></td><td>Images &rarr; Edit advanced...</td><td><b>Display</b> threshold of the slice views, <code>{"min":..,"max":..,"apply":true}</code>: values outside the range are transparent.</td></tr>
+<tr><td><code>images[].segment_editor_threshold</code></td><td>Images &rarr; Edit advanced...</td><td>Starting range <code>{"min":..,"max":..}</code> of the Segment Editor's Threshold effect while this image is the source volume (either end may be left out). Not the display threshold.</td></tr>
+<tr><td><code>images[].interpolate</code></td><td>Images &rarr; Edit advanced...</td><td>Interpolate the image in the slice views.</td></tr>
+<tr><td><code>defaults.image / defaults.segment</code></td><td>Defaults / Presets</td><td>Settings applied to every image row / every segment row; the row's own fields win.</td></tr>
+<tr><td><code>presets</code></td><td>Defaults / Presets</td><td>Named image settings, picked per row with <code>images[].preset</code>.</td></tr>
+<tr><td colspan="3" class="grp">Segmentation (Segmentation tab)</td></tr>
+<tr><td><code>segmentation.enabled</code></td><td>Segmentation &rarr; Enabled</td><td>Build / load a segmentation for each specimen.</td></tr>
+<tr><td><code>segmentation.reference_image</code></td><td>Segmentation &rarr; Reference image</td><td>The image whose geometry the segmentation is built on.</td></tr>
+<tr><td><code>segmentation.path_pattern</code></td><td>Segmentation &rarr; Path pattern (default)</td><td>Fallback file name for segments without their own CSV column or path; also takes <code>{segment_name}</code>.</td></tr>
+<tr><td><code>segmentation.output_filename</code></td><td>Segmentation &rarr; Output filename</td><td>File name of the saved segmentation in the specimen's output folder (default <code>segment.seg.nrrd</code>).</td></tr>
+<tr><td><code>segmentation.opacity</code></td><td>Segmentation &rarr; Opacity</td><td>Display opacity (0-1) of the whole segmentation; empty = 1.</td></tr>
+<tr><td><code>segmentation.segments[].name</code></td><td>Segmentation &rarr; segments table</td><td>Segment name; what <code>{segment_name}</code> inserts.</td></tr>
+<tr><td><code>segmentation.segments[].source</code></td><td>Segmentation &rarr; segments table</td><td><code>file</code> (default): try the CSV column / path pattern, fall back to an empty segment. <code>empty</code>: never try a file.</td></tr>
+<tr><td><code>segmentation.segments[].csv_column</code></td><td>Segmentation &rarr; segments table</td><td>The column holding the file to pre-fill the segment from (e.g. an automatic segmentation).</td></tr>
+<tr><td><code>segmentation.segments[].path_pattern</code></td><td>Segmentation &rarr; segments table</td><td>Own path pattern of this segment, instead of the default one.</td></tr>
+<tr><td><code>segmentation.segments[].color</code></td><td>Segmentation &rarr; segments table</td><td>Segment colour <code>[r,g,b]</code>, 0-1.</td></tr>
+<tr><td><code>segmentation.segments[].visible</code></td><td>Segmentation &rarr; segments table</td><td><code>false</code> hides the segment when the segmentation is first built; omitted = Slicer's default (shown). A saved segmentation is not touched.</td></tr>
+<tr><td colspan="3" class="grp">Markups (Markups tab)</td></tr>
+<tr><td><code>markups.enabled</code></td><td>Markups &rarr; Enabled</td><td>Load / create a markups node for each specimen.</td></tr>
+<tr><td><code>markups.csv_column</code></td><td>Markups &rarr; CSV column</td><td>Column holding the markups file of the specimen.</td></tr>
+<tr><td><code>markups.path_pattern</code></td><td>Markups &rarr; Path pattern</td><td>Fallback file name when the CSV column gives none.</td></tr>
+<tr><td><code>markups.template_path</code></td><td>Markups &rarr; Template file</td><td>Loaded as the starting point for a specimen that has no markups yet.</td></tr>
+<tr><td><code>markups.writable</code></td><td>Markups &rarr; Writable</td><td>On (default): the markups are saved with the specimen. Off: they are not.</td></tr>
+<tr><td><code>markups.color</code></td><td>Markups &rarr; Color</td><td>Point colour <code>[r,g,b]</code>; empty = Slicer's default.</td></tr>
+<tr><td><code>markups.size</code></td><td>Markups &rarr; Size</td><td>Point size: the Scale of Slicer's Markups display settings, or millimetres with <code>size_absolute</code>.</td></tr>
+<tr><td><code>markups.size_absolute</code></td><td>Markups &rarr; in mm</td><td><code>true</code>: <code>size</code> is in millimetres (a real-world size).</td></tr>
+<tr><td><code>markups.glyph_type</code></td><td>Markups &rarr; Shape</td><td>Point shape, e.g. <code>Sphere3D</code> (a 3D ball visible across several slices).</td></tr>
+<tr><td colspan="3" class="grp">Workspace (Workspace tab) - applied once per specimen load</td></tr>
+<tr><td><code>window_level.enabled / min / max</code></td><td>Workspace &rarr; Window/level</td><td>One blanket min/max applied to every loaded volume.</td></tr>
+<tr><td><code>slice_rotation.enabled / red / yellow / green</code></td><td>Workspace &rarr; Slice rotation</td><td>In-plane rotation in degrees of the Red / Yellow / Green view (as the Reformat module's slider).</td></tr>
+<tr><td><code>workspace.crosshair_mode / behavior / thickness</code></td><td>Workspace &rarr; Crosshair</td><td>Crosshair settings (Slicer enum names). Unset = this module's usual <code>ShowBasic</code> / <code>OffsetJumpSlice</code> / <code>Fine</code>.</td></tr>
+<tr><td><code>workspace.ruler_type</code></td><td>Workspace &rarr; Ruler</td><td>Slice-view ruler: <code>None</code> / <code>Thin</code> / <code>Thick</code>. Unset = leave alone.</td></tr>
+<tr><td><code>workspace.orientation_marker_3d_type / _size</code></td><td>Workspace &rarr; 3D marker</td><td>Orientation marker of the 3D view: <code>None</code> / <code>Cube</code> / <code>Human</code> / <code>Axes</code>; size <code>Small</code> / <code>Medium</code> / <code>Large</code>.</td></tr>
+<tr><td><code>workspace.orientation_marker_2d_type / _size</code></td><td>Workspace &rarr; 2D marker</td><td>The same for the slice views.</td></tr>
+<tr><td><code>workspace.view_convention</code></td><td>Workspace &rarr; View convention</td><td><code>radiological</code> (Slicer's default: patient's right on screen-left) or <code>neurological</code>.</td></tr>
+<tr><td><code>workspace.specimen_annotation</code></td><td>Workspace &rarr; Specimen annotation</td><td>Show the loaded specimen's ID, table values and status as text in the views.</td></tr>
+<tr><td colspan="3" class="grp">Segment editor (Segment editor tab)</td></tr>
+<tr><td><code>segment_editor.overwrite_mode</code></td><td>Segment editor &rarr; Modify other segments</td><td><code>none</code> (allow overlap) / <code>all_segments</code> / <code>visible_segments</code>. Omitted = leave Slicer's setting alone.</td></tr>
+<tr><td><code>segment_editor.editable_area</code></td><td>Segment editor &rarr; Editable area</td><td><code>everywhere</code> or <code>inside</code> / <code>outside</code> <code>_all_segments</code> / <code>_visible_segments</code>. Omitted = leave Slicer's setting alone.</td></tr>
+<tr><td><code>segment_editor.brush.shape / diameter_mm / relative</code></td><td>Segment editor &rarr; Brush</td><td>Shape <code>sphere</code> / <code>circle</code>; the diameter; <code>relative: true</code> makes the diameter a % of the slice view instead of millimetres (the <i>Use absolute size (mm)</i> checkbox is its inverse).</td></tr>
+<tr><td><code>segment_editor.active_effect</code></td><td>Segment editor &rarr; Active effect</td><td>The effect selected when a specimen loads (e.g. <code>Paint</code>).</td></tr>
+<tr><td><code>segment_editor.source_volume_to_foreground</code></td><td>Segment editor &rarr; Slice view layers</td><td>Default on: the source volume is shown as the foreground and the reference image stays the background. Off: Slicer's own behaviour.</td></tr>
+<tr><td><code>segment_editor.editable_intensity_range</code></td><td>Segment editor &rarr; Editable intensity range</td><td>Per brush effect (<code>Paint</code>, <code>Erase</code>) <code>{"min":..,"max":..}</code>, switched on when that effect becomes active. An end left out = the source volume's own end.</td></tr>
+<tr><td><code>segment_editor.attributes</code></td><td>Segment editor &rarr; Raw attributes</td><td>Raw Segment Editor node attributes, applied last (they win on conflict). See the Segment editor section.</td></tr>
+<tr><td colspan="3" class="grp">Volume rendering (Volume rendering tab)</td></tr>
+<tr><td><code>volume_rendering[].image / enabled</code></td><td>Volume rendering &rarr; Image / Enable</td><td>One entry per image; any number can be enabled at once.</td></tr>
+<tr><td><code>volume_rendering[].preset</code></td><td>Volume rendering &rarr; Preset</td><td>A Slicer volume rendering preset name.</td></tr>
+<tr><td><code>volume_rendering[].window_level</code></td><td>Volume rendering &rarr; Min / Max</td><td>Rescales the preset into this range (<code>{"min":..,"max":..}</code> or <code>{"window":..,"level":..}</code>).</td></tr>
+<tr><td><code>volume_rendering[].offset</code></td><td>Volume rendering &rarr; Offset</td><td>Fixed shift of the preset; wins over Min/Max.</td></tr>
+<tr><td colspan="3" class="grp">Batch export (Batch export tab) - details in docs/batch-export.md</td></tr>
+<tr><td><code>batch_export.enabled</code></td><td>Batch export &rarr; Enable batch export</td><td>Master switch; the module's Batch export button appears only when it is on.</td></tr>
+<tr><td><code>batch_export.export_segments / compute_stats / export_markups / markups_report</code></td><td>Batch export &rarr; Batch operations</td><td>Which outputs a batch run produces. <code>markups_report</code> needs <code>export_markups</code>.</td></tr>
+<tr><td><code>batch_export.reference_image</code></td><td>Batch export &rarr; Segment export settings</td><td>Geometry every exported segment label map is built on.</td></tr>
+<tr><td><code>batch_export.stats_reference_images / stats_metrics</code></td><td>Batch export &rarr; Segment statistics settings</td><td>The images the intensities are sampled from (one row per image and segment) and the metrics (<code>volume</code>, <code>min</code>, <code>max</code>, <code>mean</code>, <code>median</code>, <code>std</code>, <code>percentile_&lt;N&gt;</code>); empty = the default set.</td></tr>
 <tr><td><code>batch_export.output_dir</code></td><td>Batch export &rarr; Batch export root dir</td><td>The root every batch pattern below is anchored to (segment/markup files, and any relative Segment export/Report/Markup summary pattern). Empty -> <code>study_dir</code>.</td></tr>
 <tr><td><code>batch_export.output_dir_pattern</code></td><td>Batch export &rarr; Segment export pattern</td><td>Per-specimen subfolder, joined onto the batch root dir - governs segment + markup FILE export only.</td></tr>
 <tr><td><code>batch_export.segments_filter</code></td><td>Segment export settings &rarr; Segments filter</td><td>Which segments get exported to a labelmap file. Independent of <code>stats_segments_filter</code>.</td></tr>
@@ -241,6 +307,7 @@ overlays) to copy from, plus an "Insert ALL" button.</p>
 <tr><td><code>batch_export.stats_output_path</code></td><td>Segment statistics settings &rarr; Report pattern</td><td>Statistics CSV path, anchored directly to the batch root dir (never nested through the Segment export pattern). Defaults to <code>report.csv</code>.</td></tr>
 <tr><td><code>batch_export.markups_output_path</code></td><td>Markup summary settings &rarr; Markup summary pattern</td><td>Combined markup-summary CSV path, same anchoring rule as the Report pattern. Defaults to <code>markups_report.csv</code>.</td></tr>
 <tr><td><code>batch_export.markups_coordinate_system</code></td><td>Markup summary settings &rarr; Markup CSV coordinate encoding</td><td>RAS (default) or LPS - which convention the x/y/z values in the per-specimen markups CSV and the combined summary CSV use. Does not affect the <code>.mrk.json</code> file itself.</td></tr>
+<tr><td colspan="3" class="grp">Placeholders in path patterns</td></tr>
 <tr><td><code>{column}</code></td><td>Any path-pattern field</td><td>Any key/<code>database.csv</code>/<code>preseg.csv</code> column name in curly braces - substituted with that specimen's value.</td></tr>
 <tr><td><code>{date}</code> / <code>{time}</code> / <code>{datetime}</code></td><td>Report pattern, Markup summary pattern</td><td>Current date/time, substituted once per batch run (<code>YYYY-MM-DD</code> / <code>HH-MM-SS</code> / combined).</td></tr>
 <tr><td><code>{index}</code></td><td>Report pattern, Markup summary pattern</td><td>Only when present: a two-digit, <code>_01</code>-based counter inserted before the file extension, picking the lowest suffix not already on disk - so a previous run's file is never overwritten. Absent -> existing file is overwritten as usual.</td></tr>

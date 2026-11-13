@@ -7,7 +7,7 @@ Reference documentation for GenericSpecimenManager. New here? Start with the
 
 | page | what it covers |
 |---|---|
-| [Config reference](config-reference.md) | the complete `config.json` schema, path resolution, and a key reference table |
+| [Config reference](config-reference.md) | the complete `config.json` schema and path resolution (the per-key reference is in the Config Editor's Help) |
 | [Config Editor](config-editor.md) | the guided editor: how it works and what each tab is for |
 | [The main module](main-module.md) | the module layout, specimen status, filters, reset, what happens when something is wrong |
 | [Batch export](batch-export.md) | segment export, statistics, markup summary, filename patterns |

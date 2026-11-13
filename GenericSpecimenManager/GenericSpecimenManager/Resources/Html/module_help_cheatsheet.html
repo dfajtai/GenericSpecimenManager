@@ -73,7 +73,7 @@
 <li><b>Save progress for active specimen</b> - writes its segmentation and markups (and any image you changed) into the specimen's output folder. <b>Ctrl+S</b> does the same, from any module, while a specimen is loaded (quietly, with a status-bar note); without a loaded specimen Ctrl+S is Slicer's own Save scene again.</li>
 <li><b>Data safety</b> - saves are atomic (a failed write never damages the old file), <code>database.csv</code> is backed up into a <code>.backups</code> folder and asks before overwriting a version changed on disk meanwhile, segmentation and markups keep the previous save as <code>.prev</code>, and a lock file warns when the study is open in another session. Details: <code>docs/data-safety.md</code>.</li>
 <li>If a specimen is open when you press <b>Initialize Study</b>, load another config or start <b>Batch export</b>, you are asked whether to <i>Save and close</i> it, <i>Close without saving</i>, or <i>Cancel</i>.</li>
-<li><b>Close active specimen</b> - never saves the specimen's work; save first if you want to keep it. The dialog offers <i>Yes</i>, <i>Yes, mark to review</i>, <i>Yes, mark finished</i> and <i>No</i>.</li>
+<li><b>Close active specimen</b> - if the segmentation or markups have unsaved changes it first asks <i>Save and close</i>, <i>Close</i> (without saving) or <i>Cancel</i>. Then the dialog offers <i>Yes</i>, <i>Yes, mark to review</i>, <i>Yes, mark finished</i> and <i>No</i>.</li>
 </ul>
 
 <a name="reset"></a>
