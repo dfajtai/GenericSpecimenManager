@@ -112,6 +112,10 @@ IMAGES_READ_ONLY_BY_DEFAULT = True
 DEFAULT_STATS_METRICS = ["volume", "min", "max", "mean", "median", "std",
                           "percentile_5", "percentile_25", "percentile_75", "percentile_95"]
 
+# Decimal places the statistics are rounded to when batch_export.stats_precision is not set: float32 image data and voxel
+# volumes leave binary rounding noise (0.5 comes out as 0.5000000298), which this hides without losing anything useful.
+DEFAULT_STATS_PRECISION = 6
+
 
 # Shown by every optional dropdown in the Config Editor for "nothing chosen" (never a blank entry).
 UNSET = "(unset)"

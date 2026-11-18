@@ -13,9 +13,10 @@ import slicer
 import vtk
 
 from Resources.core.logging_setup import logger
+from Resources.core.numbers import round_stat, valid_decimals
 from Resources.core.paths import platform_path
 from Resources.utils.slicer_ui import NullProgress
-from Resources.definitions import DEFAULT_STATS_METRICS, SpecimenStatus, SPECIMEN_STATUS_LABELS
+from Resources.definitions import DEFAULT_STATS_METRICS, DEFAULT_STATS_PRECISION, SpecimenStatus, SPECIMEN_STATUS_LABELS
 
 
 class BatchProcessor:
@@ -107,6 +108,9 @@ class BatchProcessor:
         need_ref_image = bool(be_cfg.export_segments or be_cfg.compute_stats)
         self.stats_rows = []
         self.markup_rows = []
+        self._stats_decimals = valid_decimals(be_cfg.stats_precision, DEFAULT_STATS_PRECISION)
+        if be_cfg.stats_precision is not None and self._stats_decimals != be_cfg.stats_precision:
+            logger.warning(f"[BatchProcessor] stats_precision {be_cfg.stats_precision!r} is not a whole number >= 0 - using {DEFAULT_STATS_PRECISION}")
 
         # Snapshot every ColorTableNode already in the scene before we touch anything - Slicer's
         # own ExportSegmentsToLabelmapNode auto-creates a fresh display node + color table for
@@ -133,7 +137,7 @@ class BatchProcessor:
         def _restore_warning_display():
             vtk.vtkObject.SetGlobalWarningDisplay(previous_warning_display)
 
-        self._progress.start(len(finished) + 1, "Batch export")   # +1: writing the report files at the end
+        self._progress.start(len(finished), "Batch export")   # one step per specimen: the bar shows x / <number of finished specimens>
         try:
             for key, specimen in self.logic.specimens.items():
                 if specimen.status != SpecimenStatus.FINISHED:
@@ -152,7 +156,6 @@ class BatchProcessor:
                 self._write_stats_csv()
             if be_cfg.export_markups and be_cfg.markups_report:
                 self._write_markups_report()
-            self._progress.step()
         finally:
             self._progress.finish()
             try:
@@ -469,7 +472,7 @@ class BatchProcessor:
         row["image"] = image_name
         row["segment"] = seg_name
         for metric_name in metrics:
-            row[metric_name] = self._compute_metric(metric_name, roi_pixels, voxel_volume)
+            row[metric_name] = round_stat(self._compute_metric(metric_name, roi_pixels, voxel_volume), self._stats_decimals)
         row["_stats_path"] = stats_path
         self.stats_rows.append(row)
 

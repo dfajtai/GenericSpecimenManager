@@ -4,6 +4,11 @@ Newest first, one line per change. The day-by-day development log with the reaso
 [archive](changelog/archive-2026-09-to-11-09.md));
 planned work is in the [roadmap](docs/roadmap.md).
 
+## 2026-11-18
+
+- New: `batch_export.stats_precision` - decimals of the segment statistics (default 6; Config Editor: *Decimals*). Float noise such as `0.50000000000001` no longer reaches the CSV; a value within 0.000001 of a non-zero whole number is written as a whole number (`5`, not `5.0`).
+- Fix: the batch export progress bar showed one step too many (`x / 151` for 150 specimens).
+
 ## 2026-11-09
 
 - Fix: text typed into a table cell (e.g. a comment) was saved as `0`.

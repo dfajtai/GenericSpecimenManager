@@ -393,6 +393,7 @@ class BatchExportConfig:
     # mean/median/std or percentile_<N> (e.g. percentile_25). Unset/empty
     # falls back to Definitions.DEFAULT_STATS_METRICS.
     stats_metrics: Optional[List[str]] = None
+    stats_precision: Optional[int] = None    # decimal places of the statistics in the CSV; None -> definitions.DEFAULT_STATS_PRECISION
     # The "batch segment statistics pattern": a curly-brace pattern (same
     # {column} mechanism as output_dir_pattern above, plus "{date}"/
     # "{time}"/"{datetime}"/"{index}" - see batch_processor.BatchProcessor._resolve_pattern_path())

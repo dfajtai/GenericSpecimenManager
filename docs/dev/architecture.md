@@ -49,6 +49,7 @@ Each file's responsibility:
 | [`Resources/core/safe_io.py`](../../GenericSpecimenManager/GenericSpecimenManager/Resources/core/safe_io.py) | atomic writes, backups, change detection and the study lock - see [Data safety](../data-safety.md) |
 | [`Resources/core/status.py`](../../GenericSpecimenManager/GenericSpecimenManager/Resources/core/status.py) | parsing of a `database.csv` status cell |
 | [`Resources/core/naming.py`](../../GenericSpecimenManager/GenericSpecimenManager/Resources/core/naming.py) | display text from identifiers: Slicer's CamelCase names, `database.csv` column names |
+| [`Resources/core/numbers.py`](../../GenericSpecimenManager/GenericSpecimenManager/Resources/core/numbers.py) | rounding of the statistics written to the CSV (`round_stat`, `valid_decimals`) |
 | [`Resources/core/paths.py`](../../GenericSpecimenManager/GenericSpecimenManager/Resources/core/paths.py) | path text from the CSVs/config converted to the running platform's separator |
 | [`Resources/core/colormaps.py`](../../GenericSpecimenManager/GenericSpecimenManager/Resources/core/colormaps.py) | the built-in colour maps (`gnuplot2`, `inferno`) as plain RGB stops |
 | [`Resources/core/logging_setup.py`](../../GenericSpecimenManager/GenericSpecimenManager/Resources/core/logging_setup.py) | the shared `logger` every other file uses instead of `print()`, with an optional log-to-file toggle |
