@@ -79,7 +79,8 @@ The complete `config.json` schema (1:1 with `core/config_model.py`), and how pat
     "enabled": true, "export_segments": true, "export_markups": true,
     "reference_image": "mask", "segments_filter": ["liver", "tumor"],       // export_segments only
     "stats_segments_filter": ["liver"],                                    // compute_stats only, independent of segments_filter
-    "stats_precision": 6,                                                  // compute_stats only: decimal places of the statistics in the CSV (default 6); a value within 0.000001 of a non-zero whole number is written whole
+    "stats_decimals": 4,                                                   // compute_stats only: decimal places the statistics are rounded to in the CSV (default 4)
+    "stats_precision": 1e-6,                                               // compute_stats only: absolute epsilon - a value this close to a whole number (0 included) is written as that integer; a value too small for stats_decimals keeps the digits this resolves (default 1e-6)
     "output_dir": "results", "output_dir_pattern": "{batch}/{ID}",  // per-specimen, {column} mechanism
     "stats_output_path": "{batch}/report_{index}.csv",              // {index} = 01-based, avoids overwriting a previous run
     "markups_report": true, "markups_output_path": "{batch}/markups_{index}.csv"

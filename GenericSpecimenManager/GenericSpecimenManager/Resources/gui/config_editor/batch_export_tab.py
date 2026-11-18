@@ -6,7 +6,7 @@ Batch export tab: what to produce, where it goes, the segment/markup reports.
 
 import qt
 
-from Resources.definitions import DEFAULT_STATS_METRICS, DEFAULT_STATS_PRECISION
+from Resources.definitions import DEFAULT_STATS_DECIMALS, DEFAULT_STATS_METRICS, DEFAULT_STATS_PRECISION
 from Resources.gui.config_editor.helpers import csv_list
 
 
@@ -154,21 +154,29 @@ class BatchExportTabMixin:
         beForm.addRow("Metrics:", metricsRow)
         self._beChildWidgets += [self.statsMetricsEdit, statsMetricsDefaultBtn]
 
-        precisionRow = qt.QHBoxLayout()
+        roundingRow = qt.QHBoxLayout()
+        self.statsDecimalsEdit = qt.QLineEdit()
+        self.statsDecimalsEdit.setMaximumWidth(48)   # a one or two digit number - no need for the full row
+        self.statsDecimalsEdit.setPlaceholderText(str(DEFAULT_STATS_DECIMALS))
+        self.statsDecimalsEdit.setToolTip(
+            "Decimal places the statistics are rounded to in the CSV (a whole number, 0 or more). Leave empty for the "
+            f"default ({DEFAULT_STATS_DECIMALS}). Hides float noise such as 0.5000000298 for 0.5.")
+        roundingRow.addWidget(qt.QLabel("Decimals:"))
+        roundingRow.addWidget(self.statsDecimalsEdit)
+        roundingRow.addSpacing(16)
         self.statsPrecisionEdit = qt.QLineEdit()
-        self.statsPrecisionEdit.setMaximumWidth(56)   # a one or two digit number - no need for the full row
+        self.statsPrecisionEdit.setMaximumWidth(80)
         self.statsPrecisionEdit.setPlaceholderText(str(DEFAULT_STATS_PRECISION))
         self.statsPrecisionEdit.setToolTip(
-            "Decimal places the statistics are rounded to in the CSV (a whole number, 0 or more). Leave empty for the "
-            f"default ({DEFAULT_STATS_PRECISION}). Rounding hides float noise such as 0.5000000298 for 0.5; "
-            "a value within 0.000001 of a non-zero whole number is written as a whole number (5, not 5.0); small values are rounded to the decimals.")
-        precisionRow.addWidget(self.statsPrecisionEdit)
-        precisionHint = qt.QLabel(f"decimals (empty = {DEFAULT_STATS_PRECISION}; whole numbers stay whole)")
-        precisionHint.setStyleSheet("color: gray;")
-        precisionRow.addWidget(precisionHint)
-        precisionRow.addStretch(1)
-        beForm.addRow("Decimals:", precisionRow)
-        self._beChildWidgets += [self.statsPrecisionEdit]
+            "Absolute precision (a number above 0, e.g. 1e-6). A statistic this close to a whole number - zero included - "
+            "is written as that whole number (255.0000004 -> 255, 3e-7 -> 0). A value too small for Decimals to show "
+            "keeps the digits this precision resolves (3e-5 with 4 decimals -> 3e-05). Leave empty for the default "
+            f"({DEFAULT_STATS_PRECISION}).")
+        roundingRow.addWidget(qt.QLabel("Precision:"))
+        roundingRow.addWidget(self.statsPrecisionEdit)
+        roundingRow.addStretch(1)
+        beForm.addRow("Rounding:", roundingRow)
+        self._beChildWidgets += [self.statsDecimalsEdit, self.statsPrecisionEdit]
 
         self.statsOutputPathEdit = qt.QLineEdit()
         self.statsOutputPathEdit.setPlaceholderText("report.csv")
@@ -260,7 +268,8 @@ class BatchExportTabMixin:
         self.statsReferenceImagesEdit.text = ",".join(be.get("stats_reference_images") or [])
         self.statsSegmentsFilterEdit.text = ",".join(be.get("stats_segments_filter") or [])
         self.statsMetricsEdit.text = ",".join(be.get("stats_metrics") or [])
-        precision = be.get("stats_precision")
+        decimals, precision = be.get("stats_decimals"), be.get("stats_precision")
+        self.statsDecimalsEdit.text = "" if decimals is None else str(decimals)
         self.statsPrecisionEdit.text = "" if precision is None else str(precision)
         self.statsOutputPathEdit.text = be.get("stats_output_path", "") or ""
         self.markupsCoordinateSystemCombo.currentText = be.get("markups_coordinate_system", "RAS") or "RAS"
@@ -304,14 +313,26 @@ class BatchExportTabMixin:
                         raise ValueError(f"invalid stats metric: {m}")
                     metrics.append(m)
                 be["stats_metrics"] = metrics
-            precision_text = self.statsPrecisionEdit.text.strip()
-            if precision_text:
-                if not precision_text.isdigit():
+            decimals_text = self.statsDecimalsEdit.text.strip()
+            if decimals_text:
+                if not decimals_text.isdigit():
                     qt.QMessageBox.critical(
                         self, "Config Editor",
-                        f"Decimals '{precision_text}' must be a whole number, 0 or more.")
+                        f"Decimals '{decimals_text}' must be a whole number, 0 or more.")
+                    raise ValueError(f"invalid stats decimals: {decimals_text}")
+                be["stats_decimals"] = int(decimals_text)
+            precision_text = self.statsPrecisionEdit.text.strip()
+            if precision_text:
+                try:
+                    precision = float(precision_text)
+                    if not precision > 0 or precision == float("inf"):
+                        raise ValueError
+                except ValueError:
+                    qt.QMessageBox.critical(
+                        self, "Config Editor",
+                        f"Precision '{precision_text}' must be a number above 0, e.g. 1e-6.")
                     raise ValueError(f"invalid stats precision: {precision_text}")
-                be["stats_precision"] = int(precision_text)
+                be["stats_precision"] = precision
             if self.statsOutputPathEdit.text.strip():
                 be["stats_output_path"] = self.statsOutputPathEdit.text.strip()
             if self.markupsCoordinateSystemCombo.currentText != "RAS":
@@ -325,7 +346,7 @@ class BatchExportTabMixin:
         """Reset the Batch export tab to its blank/default state."""
         for edit in (self.beSegmentsFilterEdit, self.beOutputDirEdit, self.beOutputDirPatternEdit,
                      self.statsReferenceImagesEdit, self.statsSegmentsFilterEdit, self.statsMetricsEdit,
-                     self.statsPrecisionEdit, self.statsOutputPathEdit, self.markupsOutputPathEdit):
+                     self.statsDecimalsEdit, self.statsPrecisionEdit, self.statsOutputPathEdit, self.markupsOutputPathEdit):
             edit.text = ""
         self.beReferenceImageEdit.currentText = ""
         self.markupsCoordinateSystemCombo.currentText = "RAS"

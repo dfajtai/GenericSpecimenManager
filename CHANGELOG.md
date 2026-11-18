@@ -6,7 +6,7 @@ planned work is in the [roadmap](docs/roadmap.md).
 
 ## 2026-11-18
 
-- New: `batch_export.stats_precision` - decimals of the segment statistics (default 6; Config Editor: *Decimals*). Float noise such as `0.50000000000001` no longer reaches the CSV; a value within 0.000001 of a non-zero whole number is written as a whole number (`5`, not `5.0`).
+- New: `batch_export.stats_decimals` (default 4) and `stats_precision` (absolute epsilon, default 1e-6) round the segment statistics (Config Editor: *Rounding*). Float noise such as `0.50000000000001` no longer reaches the CSV; a value within the precision of a whole number is written as an integer (`5`, not `5.0`), and a value too small for the decimals keeps the digits the precision resolves.
 - Fix: the batch export progress bar showed one step too many (`x / 151` for 150 specimens).
 
 ## 2026-11-09

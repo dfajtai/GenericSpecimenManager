@@ -21,9 +21,11 @@ Any combination of the following, in one pass:
   correctly, because every segment is exported separately. `segments_filter` limits which segments are exported.
 - **Segment statistics** (`compute_stats`) - one CSV with a row per specimen and segment: volume, min, max, mean,
   median, std and/or `percentile_<N>` (`stats_metrics`; empty = the default set). The values are rounded to
-  `stats_precision` decimal places (default 6), so float noise such as `0.5000000298` does not reach the CSV;
-  a value within 0.000001 of a non-zero whole number is written as that whole number (`5`, not `5.0`), whatever the
-  setting; small values are simply rounded to the decimals. `stats_reference_images` are the
+  `stats_decimals` decimal places (default 4), so float noise such as `0.5000000298` does not reach the CSV. The absolute
+  `stats_precision` (default `1e-6`) is the epsilon: a value within it of a whole number - zero included - is written as that
+  integer (`255.0000004` -> `255`, `3e-7` -> `0`), whatever the decimals, and a value too small for the decimals to show
+  keeps the digits the precision resolves (`3e-5` stays `3e-05`) instead of becoming `0`. A rounded whole number is
+  written without decimals (`5`, not `5.0`). `stats_reference_images` are the
   volumes the intensities are sampled from; each gets its own row per segment, so a multi-sequence study gets one row
   per sequence. `stats_segments_filter` selects the segments independently of `segments_filter`: a segment can be
   exported without being in the statistics, or the other way round.

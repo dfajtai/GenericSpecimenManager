@@ -13,10 +13,10 @@ import slicer
 import vtk
 
 from Resources.core.logging_setup import logger
-from Resources.core.numbers import round_stat, valid_decimals
+from Resources.core.numbers import round_stat, valid_decimals, valid_precision
 from Resources.core.paths import platform_path
 from Resources.utils.slicer_ui import NullProgress
-from Resources.definitions import DEFAULT_STATS_METRICS, DEFAULT_STATS_PRECISION, SpecimenStatus, SPECIMEN_STATUS_LABELS
+from Resources.definitions import DEFAULT_STATS_DECIMALS, DEFAULT_STATS_METRICS, DEFAULT_STATS_PRECISION, SpecimenStatus, SPECIMEN_STATUS_LABELS
 
 
 class BatchProcessor:
@@ -108,9 +108,12 @@ class BatchProcessor:
         need_ref_image = bool(be_cfg.export_segments or be_cfg.compute_stats)
         self.stats_rows = []
         self.markup_rows = []
-        self._stats_decimals = valid_decimals(be_cfg.stats_precision, DEFAULT_STATS_PRECISION)
-        if be_cfg.stats_precision is not None and self._stats_decimals != be_cfg.stats_precision:
-            logger.warning(f"[BatchProcessor] stats_precision {be_cfg.stats_precision!r} is not a whole number >= 0 - using {DEFAULT_STATS_PRECISION}")
+        self._stats_decimals = valid_decimals(be_cfg.stats_decimals, DEFAULT_STATS_DECIMALS)
+        if be_cfg.stats_decimals is not None and self._stats_decimals != be_cfg.stats_decimals:
+            logger.warning(f"[BatchProcessor] stats_decimals {be_cfg.stats_decimals!r} is not a whole number >= 0 - using {DEFAULT_STATS_DECIMALS}")
+        self._stats_precision = valid_precision(be_cfg.stats_precision, DEFAULT_STATS_PRECISION)
+        if be_cfg.stats_precision is not None and self._stats_precision != be_cfg.stats_precision:
+            logger.warning(f"[BatchProcessor] stats_precision {be_cfg.stats_precision!r} is not a number > 0 - using {DEFAULT_STATS_PRECISION}")
 
         # Snapshot every ColorTableNode already in the scene before we touch anything - Slicer's
         # own ExportSegmentsToLabelmapNode auto-creates a fresh display node + color table for
@@ -472,7 +475,7 @@ class BatchProcessor:
         row["image"] = image_name
         row["segment"] = seg_name
         for metric_name in metrics:
-            row[metric_name] = round_stat(self._compute_metric(metric_name, roi_pixels, voxel_volume), self._stats_decimals)
+            row[metric_name] = round_stat(self._compute_metric(metric_name, roi_pixels, voxel_volume), self._stats_decimals, self._stats_precision)
         row["_stats_path"] = stats_path
         self.stats_rows.append(row)
 
