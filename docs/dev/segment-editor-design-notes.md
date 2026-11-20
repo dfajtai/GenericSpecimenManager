@@ -33,9 +33,9 @@ An earlier version registered the `vtkMRMLSegmentEditorNode` as a
 class-level DEFAULT/template node (`AddDefaultNode`), and also set
 `active_effect` on it. That node has no attached segmentation and no source
 volume. When the real Segment Editor widget clones this template and tries
-to immediately activate the effect with no context - **several effects
-crash natively (no Python traceback at all)**. This caused a full Slicer
-crash on module switch.
+to immediately activate the effect with no context - **activating some
+effects without that context can end Slicer abruptly (no Python traceback
+at all)**. In practice this closed Slicer on a module switch.
 
 **Fix**: `active_effect` is **never** set on the bare default/template
 node. It's only applied once the node actually has a segmentation attached

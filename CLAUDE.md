@@ -7,8 +7,8 @@ machine-analysable data comes out.
 
     raw scans -> pre-processing (planned) -> preseg.csv + database.csv -> THIS module -> batch export CSVs -> analysis (planned)
 
-Guiding idea: people make mistakes, code doesn't. Take the error-prone parts (file/segment names, paths, where results
-go, which specimen is done) out of human hands, and never put the data at risk. So: generate names and paths from CSV
+Guiding idea: take the repetitive bookkeeping (file/segment names, paths, where results go, which specimen is done)
+off the user's hands, so they can concentrate on the segmentation, and never put the data at risk. So: generate names and paths from CSV
 columns via patterns, validate up front, write files safely, keep the UI surface small (the maintainer keeps pruning
 options nobody would use). The two CSVs and the exported files are the contract between the pieces - treat their
 format as an interface (see `docs/roadmap.md` for the planned pre-processing/analysis steps).
@@ -37,7 +37,7 @@ Layer rule (enforced by a test): core <- utils <- study <- gui. Never import upw
 
 ## Conventions
 - `gui/` methods are camelCase (Slicer style, e.g. `_populateGeneral`); `core/`, `utils/`, `study/` are snake_case.
-- Every function/method has a docstring; explain WHY for Slicer/VTK quirks. Don't guess Slicer APIs - flag uncertainty.
+- Every function/method has a docstring; explain WHY for Slicer/VTK particularities. Don't guess Slicer APIs - flag uncertainty.
 - Unknown config keys are ignored silently; no backward-compatibility shims (the schema may change).
 - Keep docs in step with the code: `docs/`, the cheat sheets and `CHANGELOG.md`. User docs (`docs/`, `howto/`) say what to do and
   what you get; how it works inside goes to `docs/dev/`. `CHANGELOG.md` is one line per change.

@@ -10,17 +10,15 @@ shows in the terminal out of the box - the level split is:
   WARNING  something skipped/unusual but not fatal
   ERROR    something actually went wrong
 
-NOTE on color: Slicer's Python console is a Qt text widget, not a real
-terminal - it does NOT interpret ANSI color escape codes, it just shows
-them as raw, garbled text (`\x1b[33m...`). There is also no built-in,
-reliable way (as of this writing) to get Slicer to color plain Python log
-messages by level - this was a still-open Slicer feature request as of
-Feb 2025 (discourse.slicer.org/t/different-colors-for-warnings-and-errors,
-topic 41835). What we CAN do, and this does: split output by the standard
-Python-logging convention - DEBUG/INFO to stdout, WARNING/ERROR/CRITICAL to
-stderr. Some terminals/consoles style stderr differently on their own; if
-yours doesn't, you still get correctly-leveled messages, just not colored -
-better than broken escape-code garbage either way.
+NOTE on color: Slicer's Python console is a Qt text widget, not a terminal,
+so it does not interpret ANSI color escape codes (they show up as raw text
+like `\x1b[33m...`). Coloring log messages by level in that console is a
+known feature request on the Slicer forum (discourse.slicer.org/t/different-
+colors-for-warnings-and-errors, topic 41835, open as of Feb 2025). What we
+can do is split the output by the standard Python-logging convention -
+DEBUG/INFO to stdout, WARNING/ERROR/CRITICAL to stderr. Some
+terminals/consoles style stderr differently on their own; where yours does
+not, the messages still carry their level, just without color.
 
 To ALSO write everything to a log file (with timestamps), alongside the
 terminal, flip DEBUG_LOG_TO_FILE below to True. Hardcoded on purpose, for a

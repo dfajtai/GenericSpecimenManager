@@ -270,7 +270,7 @@ class GenericSpecimen:
         marked SetHideFromEditors(True) - they're headless/transient
         (removed right after processing, never shown to the user), and
         letting Subject Hierarchy track them is what causes a
-        'GetSubjectHierarchyNode: Invalid scene given' warning storm when
+        a run of repeated 'GetSubjectHierarchyNode: Invalid scene given' warnings when
         several get removed in a row via close()."""
         wanted = set(image_names or [])
         if wanted:

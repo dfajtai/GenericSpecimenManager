@@ -128,7 +128,7 @@ class BatchProcessor:
             self._pre_existing_color_node_ids.add(_color_collection.GetItemAsObject(_i).GetID())
 
         # Removing several nodes in a row (per-specimen images + segmentation) can trigger a
-        # harmless but noisy "GetSubjectHierarchyNode: Invalid scene given" warning storm from
+        # harmless run of repeated "GetSubjectHierarchyNode: Invalid scene given" warnings from
         # Slicer's own Subject Hierarchy plugin - a VTK-level message, unrelated to our own
         # logging above. Muted for the run; restored shortly after via a short delay rather than
         # immediately, since the warnings appear to surface only once control returns to Qt's

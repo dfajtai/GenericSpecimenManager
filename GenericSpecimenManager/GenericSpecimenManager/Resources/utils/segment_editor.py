@@ -137,8 +137,8 @@ def configure_segment_editor_defaults(se_cfg):
     - only on an already-in-use existing node (one with a segmentation
     attached). Setting it on a bare template makes the real widget try to
     activate that effect the instant it clones the template, before any
-    segmentation/volume exists - several effects crash the whole app
-    natively (no Python traceback) when that context is missing.
+    segmentation/volume exists - activating some effects without that
+    context can end Slicer abruptly (no Python traceback).
     """
     if not se_cfg.is_configured():
         return
@@ -173,8 +173,8 @@ def configure_segment_editor_defaults(se_cfg):
     # segmentation/source-volume attached. Forcing an effect active on it
     # makes the real Segment Editor widget try to activate that effect the
     # instant it clones the template - before anything is selected - and
-    # several effects crash natively (whole-app crash, no traceback) when
-    # that context is missing. This is exactly what regressed here.
+    # activating some effects without that context can end Slicer abruptly
+    # (no traceback). This is exactly what regressed here.
     _apply_common(default_node)
 
     existing_node = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLSegmentEditorNode")
@@ -370,7 +370,7 @@ def activate_segment_editor(se_cfg, segmentation_node, reference_node=None, thre
     already selected and configured. Safe (unlike touching a bare template
     node) because we explicitly attach a real segmentation/source volume
     to the widget's node BEFORE activating any effect on it - activating
-    an effect with no segmentation/volume context is what crashed before.
+    an effect with no segmentation/volume context is what ended Slicer abruptly before.
     """
     if segmentation_node is None:
         return

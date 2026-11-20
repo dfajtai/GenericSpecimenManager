@@ -13,7 +13,7 @@ saved and exported the same way, every time, so you can concentrate on the segme
 - **One config describes a whole study** - images, segments, markups, workspace, batch export. No per-species
   module to write. A guided **Config Editor** builds the JSON for you.
 - **Consistent file and segment names** - paths and names are generated from your CSV columns by patterns
-  such as `{ID}/{measurement}/{name}.nii.gz`. Nobody types or picks a path by hand.
+  such as `{ID}/{measurement}/{name}.nii.gz`. No path has to be typed or picked by hand.
 - **Start from an automatic segmentation** - a segment can be initialised from an existing label map (for example the
   output of an automatic or model-based segmentation, found through a CSV column or a path pattern) instead of an
   empty one, so the manual work becomes review and correction rather than drawing from scratch.

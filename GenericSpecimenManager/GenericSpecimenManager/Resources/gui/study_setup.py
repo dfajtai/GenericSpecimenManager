@@ -130,9 +130,8 @@ class StudySetupMixin:
         """Pure-Python (no Slicer/VTK calls) sanity check, run before ever
         calling slicer.util.loadTable()/self.logic.initializeStudy(). Catches
         the most common real-world mistakes - a typo'd key column, an empty
-        or malformed CSV - with a plain-language message, instead of letting
-        them surface as a native VTK/Slicer error dialog that's confusing for
-        non-technical users. Returns None if everything looks fine, otherwise
+        or malformed CSV - with a plain-language message, so the user
+        sees what to fix, rather than a lower-level Slicer/VTK error dialog. Returns None if everything looks fine, otherwise
         a ready-to-show message string."""
 
         key_columns = None

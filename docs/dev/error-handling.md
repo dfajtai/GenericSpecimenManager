@@ -14,8 +14,8 @@ Study, **before** any Slicer/VTK call happens:
    `examples/config` - is pre-filled into the field, which was easy to
    accidentally try to open as a file, raising an `IsADirectoryError`)?
 2. Can the database/preseg CSV be read with plain Python's `csv` module (not
-   Slicer's `loadTable` - which can throw a native, scary error dialog on an
-   empty/broken path that a Python `try/except` can't cleanly catch)?
+   Slicer's `loadTable`, which reports an empty or broken path through a native
+   error dialog that a Python `try/except` cannot catch)?
 3. Do the config's `key_columns` **actually appear** in both CSVs' headers -
    if not, a specific message (the missing column names plus the CSVs' real
    headers), not a vague downstream error.
