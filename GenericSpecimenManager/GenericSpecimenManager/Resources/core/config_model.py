@@ -302,9 +302,8 @@ class WorkspaceConfig:
     specimen load (_customize_workplace() / _apply_workspace_settings()).
     Every field is optional; unset means "leave Slicer's own default/
     previous value alone" - EXCEPT the three crosshair fields, which fall
-    back to this module's long-standing defaults (ShowBasic /
-    OffsetJumpSlice / Fine) when unset, so leaving cfg.workspace out
-    entirely changes nothing from before this feature existed. Values are
+    back to this module's defaults (ShowBasic / CenteredJumpSlice /
+    Fine, see definitions.DEFAULT_CROSSHAIR_BEHAVIOR) when unset. Values are
     the exact Slicer/VTK enum constant NAME as a string (e.g. "ShowBasic",
     "OffsetJumpSlice") for crosshair fields; ruler_type/
     orientation_marker_*_type/orientation_marker_*_size use a SHORT name

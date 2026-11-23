@@ -65,7 +65,7 @@ class WorkspaceTabMixin:
 
         chGroup = qt.QGroupBox("Crosshair")
         chForm = qt.QFormLayout(chGroup)
-        chHint = qt.QLabel("Leave any field at (unset) to keep this module's usual default (ShowBasic / OffsetJumpSlice / Fine).")
+        chHint = qt.QLabel("Leave any field at (unset) to keep this module's default (ShowBasic / CenteredJumpSlice / Fine).")
         chHint.setWordWrap(True)
         chForm.addRow(chHint)
         self.crosshairModeCombo = qt.QComboBox()
@@ -76,7 +76,7 @@ class WorkspaceTabMixin:
         self.crosshairBehaviorCombo = qt.QComboBox()
         self.crosshairBehaviorCombo.setEditable(True)
         self.crosshairBehaviorCombo.addItems(CROSSHAIR_BEHAVIOR_CHOICES)
-        self.crosshairBehaviorCombo.setToolTip("OffsetJumpSlice: clicking one view scrolls the others to follow, without recentering them.")
+        self.crosshairBehaviorCombo.setToolTip("CenteredJumpSlice (the default): clicking one view scrolls the others to that point and recentres them on it. OffsetJumpSlice: they follow without recentring.")
         chForm.addRow("Behavior:", self.crosshairBehaviorCombo)
         self.crosshairThicknessCombo = qt.QComboBox()
         self.crosshairThicknessCombo.setEditable(True)

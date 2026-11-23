@@ -7,6 +7,7 @@ planned work is in the [roadmap](docs/roadmap.md).
 ## 2026-11-23
 
 - Fix: `{index}` in the report patterns no longer brings its own underscore - `report_{index}.csv` gave `report__01.csv`, now `report_01.csv`. The counter (`01`, `02`, ...) takes exactly the place of the placeholder.
+- Changed: the default crosshair behavior (`workspace.crosshair_behavior` unset) is `CenteredJumpSlice` instead of `OffsetJumpSlice`; set `OffsetJumpSlice` explicitly to keep the old one.
 - Config Editor: the two segment filters on the Batch export tab are called *Segments to export* and *Segments in statistics*.
 
 ## 2026-11-18

@@ -10,6 +10,7 @@ import slicer
 import vtk
 
 from Resources.core.logging_setup import logger
+from Resources.definitions import DEFAULT_CROSSHAIR_BEHAVIOR
 
 
 def customize_workplace(cfg, segmentation_node=None):
@@ -89,16 +90,15 @@ def resolve_enum(obj, name, default=None):
 
 def apply_workspace_settings(ws_cfg):
     """Apply the workspace config's crosshair mode/behavior/thickness (falling
-    back to this module's long-standing defaults - ShowBasic /
-    OffsetJumpSlice / Fine - so an absent 'workspace' section changes
-    nothing), plus the purely opt-in ruler, 3D/2D orientation-marker,
-    and L/R view convention settings."""
+    back to this module's defaults - ShowBasic / CenteredJumpSlice
+    (definitions.DEFAULT_CROSSHAIR_BEHAVIOR) / Fine), plus the purely opt-in
+    ruler, 3D/2D orientation-marker, and L/R view convention settings."""
     crosshair = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
     if crosshair:
         mode = resolve_enum(crosshair, ws_cfg.crosshair_mode, "ShowBasic")
         if mode is not None:
             crosshair.SetCrosshairMode(mode)
-        behavior = resolve_enum(crosshair, ws_cfg.crosshair_behavior, "OffsetJumpSlice")
+        behavior = resolve_enum(crosshair, ws_cfg.crosshair_behavior, DEFAULT_CROSSHAIR_BEHAVIOR)
         if behavior is not None:
             crosshair.SetCrosshairBehavior(behavior)
         thickness_name = ws_cfg.crosshair_thickness or "Fine"

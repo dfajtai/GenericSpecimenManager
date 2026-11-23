@@ -193,6 +193,9 @@ CROSSHAIR_MODE_CHOICES = [
 CROSSHAIR_BEHAVIOR_CHOICES = [
     "(unset)", "Normal", "Offset", "JumpSlice", "OffsetJumpSlice", "CenteredJumpSlice",
 ]
+# Used when workspace.crosshair_behavior is not set: clicking in one slice view recentres the other views on that point
+# ("CenteredJumpSlice"); "OffsetJumpSlice" would move them to it without recentring.
+DEFAULT_CROSSHAIR_BEHAVIOR = "CenteredJumpSlice"
 CROSSHAIR_THICKNESS_CHOICES = ["(unset)", "Fine", "Medium", "Thick"]
 RULER_TYPE_CHOICES = ["(unset)", "None", "Thin", "Thick"]
 ORIENTATION_MARKER_TYPE_CHOICES = ["(unset)", "None", "Cube", "Human", "Axes"]
