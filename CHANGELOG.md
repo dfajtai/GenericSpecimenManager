@@ -4,6 +4,11 @@ Newest first, one line per change. The day-by-day development log with the reaso
 [archive](changelog/archive-2026-09-to-11-09.md));
 planned work is in the [roadmap](docs/roadmap.md).
 
+## 2026-11-23
+
+- Fix: `{index}` in the report patterns no longer brings its own underscore - `report_{index}.csv` gave `report__01.csv`, now `report_01.csv`. The counter (`01`, `02`, ...) takes exactly the place of the placeholder.
+- Config Editor: the two segment filters on the Batch export tab are called *Segments to export* and *Segments in statistics*.
+
 ## 2026-11-18
 
 - New: `batch_export.stats_decimals` (default 4) and `stats_precision` (absolute epsilon, default 1e-6) round the segment statistics (Config Editor: *Rounding*). Float noise such as `0.50000000000001` no longer reaches the CSV; a value within the precision of a whole number is written as an integer (`5`, not `5.0`), and a value too small for the decimals keeps the digits the precision resolves.

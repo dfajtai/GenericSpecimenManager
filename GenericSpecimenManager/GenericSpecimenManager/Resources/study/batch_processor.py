@@ -14,7 +14,7 @@ import vtk
 
 from Resources.core.logging_setup import logger
 from Resources.core.numbers import round_stat, valid_decimals, valid_precision
-from Resources.core.paths import platform_path
+from Resources.core.paths import first_free_indexed_path, platform_path
 from Resources.utils.slicer_ui import NullProgress
 from Resources.definitions import DEFAULT_STATS_DECIMALS, DEFAULT_STATS_METRICS, DEFAULT_STATS_PRECISION, SpecimenStatus, SPECIMEN_STATUS_LABELS
 
@@ -52,6 +52,9 @@ class BatchProcessor:
     resolve to the same final path share one file; specimens that resolve
     to different paths (because the pattern references a column whose
     value differs) naturally end up in separate files instead."""
+
+    # Stands in for {index} while the other placeholders are resolved (see _resolve_pattern_path). No braces, so str.format leaves it alone.
+    _INDEX_TOKEN = "@@INDEX@@"
 
     def __init__(self, logic, progress=None):
         """`progress`: optional utils/slicer_ui.ProgressReporter (the module's progress bar); None = no progress display."""
@@ -352,13 +355,14 @@ class BatchProcessor:
     def _resolve_pattern_path(self, pattern, specimen, default):
         """Shared resolution for batch_export's stats/markups output-path patterns:
         substitutes {date}/{time}/{datetime} (colon-free {time}, filesystem-safe - Windows
-        disallows ':' in filenames), strips the {index} placeholder (see below), then resolves any
-        remaining {column} placeholders from this specimen's own context (same mechanism as
+        disallows ':' in filenames), holds the {index} placeholder back (see below), then resolves
+        any remaining {column} placeholders from this specimen's own context (same mechanism as
         output_dir_pattern). A relative result is anchored under _resolve_root(); an absolute one
-        is returned as-is. If the pattern contained {index}, the lowest-available two-digit _NN
-        suffix (starting at _01) is appended before the extension, based on what already exists on
-        disk - this is the ONLY case where an existing file is not silently overwritten; without
-        {index} in the pattern, collisions overwrite exactly as before."""
+        is returned as-is. If the pattern contained {index}, it is replaced IN PLACE by the lowest
+        two-digit counter (01, 02, ...) that does not exist on disk yet - no separator of its own,
+        so "report_{index}.csv" gives "report_01.csv". This is the ONLY case where an existing file
+        is not silently overwritten; without {index} in the pattern, collisions overwrite exactly
+        as before."""
         import datetime
         out_path = pattern or default
         if "{date}" in out_path:
@@ -369,28 +373,21 @@ class BatchProcessor:
             out_path = out_path.replace("{datetime}", datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
         has_index = "{index}" in out_path
         if has_index:
-            out_path = out_path.replace("{index}", "")
+            out_path = out_path.replace("{index}", self._INDEX_TOKEN)   # no braces: _format() must not take it for a column
         out_path = specimen._format(out_path, what="batch report path")
         if not os.path.isabs(out_path):
             out_path = os.path.join(self._resolve_root(), out_path)
         if has_index:
-            out_path = self._insert_free_index(out_path)
+            out_path = self._fill_free_index(out_path)
         return out_path
 
-    def _insert_free_index(self, path):
-        """Insert the lowest-available two-digit _NN suffix (before the extension), starting at
-        _01, that doesn't already exist on disk - only called for a pattern that contains
-        {index}. Deterministic across specimens sharing the same base pattern within one run,
-        since nothing is written to disk until _write_stats_csv()/_write_markups_report() runs at
-        the very end - every specimen resolving the same base pattern therefore lands on the same
-        final, still-free path, so grouping-by-resolved-path keeps working."""
-        base, ext = os.path.splitext(path)
-        idx = 1
-        while True:
-            candidate = f"{base}_{idx:02d}{ext}"
-            if not os.path.exists(candidate):
-                return candidate
-            idx += 1
+    def _fill_free_index(self, path):
+        """Replace the held-back {index} placeholder in `path` by the lowest two-digit counter whose file does not exist
+        yet - only called for a pattern that contains {index}. Deterministic across specimens sharing the same base pattern
+        within one run, since nothing is written to disk until _write_stats_csv()/_write_markups_report() runs at the very
+        end - every specimen resolving the same base pattern therefore lands on the same final, still-free path, so
+        grouping-by-resolved-path keeps working."""
+        return first_free_indexed_path(path, self._INDEX_TOKEN)
 
     def _process_segments(self, specimen, geo_ref_node, stats_ref_names, out_dir, stats_path):
         """Export each segment to its own labelmap via Slicer's native

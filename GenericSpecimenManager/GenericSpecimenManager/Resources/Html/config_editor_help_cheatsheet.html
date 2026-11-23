@@ -56,7 +56,7 @@
 <ul>
 <li><code>{column}</code> - any key/<code>database.csv</code>/<code>preseg.csv</code> column value for that specimen</li>
 <li><code>{date}</code> / <code>{time}</code> / <code>{datetime}</code> - the current date/time (<code>YYYY-MM-DD</code> / <code>HH-MM-SS</code> / combined)</li>
-<li><code>{index}</code> - only when present in the pattern: a two-digit, <code>_01</code>-based counter inserted before the extension, picking the lowest suffix not already on disk, so an existing file is never overwritten</li>
+<li><code>{index}</code> - only when present in the pattern: a two-digit counter (<code>01</code>, <code>02</code>, ...) that takes exactly the place of the placeholder, with no underscore of its own (<code>report_{index}.csv</code> &rarr; <code>report_01.csv</code>); the lowest number not already on disk is used, so an existing file is never overwritten</li>
 </ul></li>
 <li><b>Batch operations</b>:
 <ul>
@@ -314,5 +314,5 @@ overlays) to copy from, plus an "Insert ALL" button.</p>
 <tr><td colspan="3" class="grp">Placeholders in path patterns</td></tr>
 <tr><td><code>{column}</code></td><td>Any path-pattern field</td><td>Any key/<code>database.csv</code>/<code>preseg.csv</code> column name in curly braces - substituted with that specimen's value.</td></tr>
 <tr><td><code>{date}</code> / <code>{time}</code> / <code>{datetime}</code></td><td>Report pattern, Markup summary pattern</td><td>Current date/time, substituted once per batch run (<code>YYYY-MM-DD</code> / <code>HH-MM-SS</code> / combined).</td></tr>
-<tr><td><code>{index}</code></td><td>Report pattern, Markup summary pattern</td><td>Only when present: a two-digit, <code>_01</code>-based counter inserted before the file extension, picking the lowest suffix not already on disk - so a previous run's file is never overwritten. Absent -> existing file is overwritten as usual.</td></tr>
+<tr><td><code>{index}</code></td><td>Report pattern, Markup summary pattern</td><td>Only when present: a two-digit counter (01, 02, ...) that takes exactly the place of the placeholder, with no underscore of its own (<code>report_{index}.csv</code> &rarr; <code>report_01.csv</code>); the lowest number not already on disk is used - so a previous run's file is never overwritten. Absent -> existing file is overwritten as usual.</td></tr>
 </table>

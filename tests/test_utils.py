@@ -69,6 +69,37 @@ class EditorAttributesTest(unittest.TestCase):
         self.assertEqual(editor_attributes(SegmentEditorConfig.from_dict({})), {})
 
 
+class FreeIndexedPathTest(unittest.TestCase):
+    """core/paths.first_free_indexed_path: {index} becomes 01, 02, ... in place, with no separator of its own."""
+
+    TOKEN = "@@INDEX@@"
+
+    def test_the_counter_takes_the_place_of_the_token(self):
+        from Resources.core.paths import first_free_indexed_path
+        got = first_free_indexed_path("out/report_@@INDEX@@.csv", self.TOKEN, exists=lambda p: False)
+        self.assertEqual(got, "out/report_01.csv")   # not report__01.csv
+
+    def test_no_underscore_is_added(self):
+        from Resources.core.paths import first_free_indexed_path
+        self.assertEqual(first_free_indexed_path("stats-2026-11-23-@@INDEX@@.csv", self.TOKEN, exists=lambda p: False),
+                         "stats-2026-11-23-01.csv")
+        self.assertEqual(first_free_indexed_path("report@@INDEX@@.csv", self.TOKEN, exists=lambda p: False), "report01.csv")
+
+    def test_the_lowest_free_number_is_taken(self):
+        from Resources.core.paths import first_free_indexed_path
+        existing = {"r_01.csv", "r_02.csv", "r_04.csv"}
+        self.assertEqual(first_free_indexed_path("r_@@INDEX@@.csv", self.TOKEN, exists=existing.__contains__), "r_03.csv")
+
+    def test_beyond_99_the_number_just_grows(self):
+        from Resources.core.paths import first_free_indexed_path
+        existing = {f"r_{i:02d}.csv" for i in range(1, 100)}
+        self.assertEqual(first_free_indexed_path("r_@@INDEX@@.csv", self.TOKEN, exists=existing.__contains__), "r_100.csv")
+
+    def test_every_token_gets_the_same_number(self):
+        from Resources.core.paths import first_free_indexed_path
+        self.assertEqual(first_free_indexed_path("@@INDEX@@/r_@@INDEX@@.csv", self.TOKEN, exists=lambda p: False), "01/r_01.csv")
+
+
 class PlatformPathTest(unittest.TestCase):
     """core/paths.platform_path: "/"-separated CSV paths on any platform."""
 

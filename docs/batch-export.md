@@ -46,8 +46,9 @@ Any combination of the following, in one pass:
 Patterns use `{column}` - any key, `database.csv` or `preseg.csv` column of the specimen. The two CSV patterns also take:
 
 - `{date}`, `{time}`, `{datetime}` - the current date / time (`YYYY-MM-DD` / `HH-MM-SS` / both).
-- `{index}` - a two-digit counter (`_01`, `_02`, ...) before the extension, taking the lowest one not on disk yet, so
-  `report_{index}.csv` never overwrites a previous run. Without `{index}` an existing file is overwritten.
+- `{index}` - a two-digit counter (`01`, `02`, ...) that takes exactly the place of the placeholder, with no separator
+  of its own: `report_{index}.csv` gives `report_01.csv`, then `report_02.csv` on the next run, so a previous run is never
+  overwritten. The lowest number not on disk yet is used. Without `{index}` an existing file is overwritten.
 
 Whether specimens share a file is decided by the pattern: those that resolve to the same path end up in one CSV; a
 pattern with a differing column (e.g. `{batch}/report.csv`) gives one CSV per value. There is no separate switch.
