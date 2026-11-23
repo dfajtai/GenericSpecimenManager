@@ -91,8 +91,10 @@ class BatchExportTabMixin:
         segFilterAllBtn.setToolTip("Fills in every segment name currently in the Segmentation tab.")
         segFilterAllBtn.connect('clicked(bool)', lambda checked=False: self._onInsertAllSegmentsFilter())
         segFilterRow.addWidget(segFilterAllBtn)
-        beForm.addRow("Segments filter:", segFilterRow)
-        self.beSegmentsFilterEdit.setToolTip("Which segments get exported to their own labelmap file. Independent of the Segment statistics settings' own filter below.")
+        beForm.addRow("Segments to export:", segFilterRow)
+        self.beSegmentsFilterEdit.setToolTip(
+            "Which segments get exported to their own labelmap file (Export segments). Names must match exactly; empty = all. "
+            "The statistics have their own list, 'Segments in statistics', in the Segment statistics settings below.")
         self._beChildWidgets += [self.beSegmentsFilterEdit, segFilterAllBtn]
 
         self.beOutputDirPatternEdit = qt.QLineEdit()
@@ -132,11 +134,11 @@ class BatchExportTabMixin:
         statsSegFilterAllBtn.setToolTip("Fills in every segment name currently in the Segmentation tab.")
         statsSegFilterAllBtn.connect('clicked(bool)', lambda checked=False: self._onInsertAllStatsSegmentsFilter())
         statsSegFilterRow.addWidget(statsSegFilterAllBtn)
-        beForm.addRow("Segments filter:", statsSegFilterRow)
+        beForm.addRow("Segments in statistics:", statsSegFilterRow)
         self.statsSegmentsFilterEdit.setToolTip(
-            "Which segments get a statistics row. Independent of the Segment export settings' own "
-            "filter above - a segment can be included here without being exported to a file, or "
-            "vice versa.")
+            "Which segments get a statistics row (Custom segment statistics). Names must match exactly; empty = all. "
+            "Independent of 'Segments to export' in the Segment export settings above - a segment can be in the "
+            "statistics without being exported to a file, or vice versa.")
         self._beChildWidgets += [self.statsSegmentsFilterEdit, statsSegFilterAllBtn]
 
         metricsRow = qt.QHBoxLayout()
